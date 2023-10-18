@@ -3,6 +3,7 @@
 
 ### General
 - [School Cheats](https://schoolcheats.pages.dev/dashboard/)
+- [ChatGPT](https://chat.openai.com/)
 
 ### Bypass
 - [12ft](https://12ft.io/)
