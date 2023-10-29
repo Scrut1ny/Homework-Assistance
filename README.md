@@ -15,3 +15,4 @@
 - [wolframalpha](https://www.wolframalpha.com/)
 
 ### English
+- [Plagiarism Checker (Grammarly)](https://www.grammarly.com/plagiarism-checker)
