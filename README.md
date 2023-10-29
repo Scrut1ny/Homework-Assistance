@@ -11,6 +11,7 @@
 ### Math
 - [mathway](https://www.mathway.com/)
 - [desmos](https://www.desmos.com/calculator)
+- [calculatorsoup](https://www.calculatorsoup.com/)
 - [wolframalpha](https://www.wolframalpha.com/)
 
 ### English
