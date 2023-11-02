@@ -2,8 +2,9 @@
 - [ivylearn](https://ivylearn.ivytech.edu/)
 
 ### General
-- [School Cheats](https://schoolcheats.pages.dev/dashboard/)
 - [ChatGPT](https://chat.openai.com/)
+- [School Cheats](https://schoolcheats.pages.dev/dashboard/)
+- [homeworkify](https://homeworkify.eu/mirror-1/)
 
 ### Bypass
 - [12ft](https://12ft.io/)
