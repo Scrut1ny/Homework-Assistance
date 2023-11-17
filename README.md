@@ -23,3 +23,4 @@
 ### ASTRO101
 - [constellation-list](https://www.constellation-guide.com/constellation-list/)
 - [Greek_alphabet](https://en.wikipedia.org/wiki/Greek_alphabet)
+- [Kepler's Third Law Calculator](https://www.omnicalculator.com/physics/kepler-third-law)
