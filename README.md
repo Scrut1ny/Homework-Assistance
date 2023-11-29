@@ -6,6 +6,7 @@
 - [School Cheats](https://schoolcheats.pages.dev/dashboard/)
 - [homeworkify](https://homeworkify.eu/mirror-1/)
 - [studyxapp](https://www.studyxapp.com/)
+- [quizlet](https://quizlet.com/search)
 
 ### Bypass
 - [12ft](https://12ft.io/)
