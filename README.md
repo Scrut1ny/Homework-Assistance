@@ -8,12 +8,14 @@
 - [studyxapp](https://www.studyxapp.com/)
 - [sciemce](https://sciemce.com/)
 - [quizlet](https://quizlet.com/search)
+- [brainly](https://brainly.com/app/ask?q=)
 
 ### Bypass
 - [12ft](https://12ft.io/)
 
 ### Math
 - [mathway](https://www.mathway.com/)
+- [cymath](https://www.cymath.com/)
 - [desmos](https://www.desmos.com/calculator)
 - [calculatorsoup](https://www.calculatorsoup.com/)
 - [omnicalculator](https://www.omnicalculator.com/)
