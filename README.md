@@ -2,6 +2,7 @@
 - [ivylearn](https://ivylearn.ivytech.edu/)
 
 ### Canvas Cheats
+- [canvas-hack](https://github.com/strix/canvas-hack)
 - [js-canvastransfer](https://github.com/Cloud7050/js-canvastransfer)
 
 ### General
