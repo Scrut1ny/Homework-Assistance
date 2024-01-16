@@ -1,6 +1,9 @@
 ### Canvas
 - [ivylearn](https://ivylearn.ivytech.edu/)
 
+### Canvas Cheats
+- [js-canvastransfer](https://github.com/Cloud7050/js-canvastransfer)
+
 ### General
 - [ChatGPT](https://chat.openai.com/)
 - [School Cheats](https://schoolcheats.pages.dev/dashboard/)
