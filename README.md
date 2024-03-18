@@ -1,6 +1,9 @@
 ### Canvas
 - [ivylearn](https://ivylearn.ivytech.edu/)
 
+### Anti-Detect
+- [Prevents websites from knowing that you switched tabs or unfocused the window](https://greasyfork.org/en/scripts/429635-always-on-focus)
+
 ### Canvas Cheats
 - [canvas-hack](https://github.com/strix/canvas-hack)
 - [js-canvastransfer](https://github.com/Cloud7050/js-canvastransfer)
