@@ -7,6 +7,7 @@
 ### Canvas Cheats
 - [canvas-hack](https://github.com/strix/canvas-hack)
 - [js-canvastransfer](https://github.com/Cloud7050/js-canvastransfer)
+- [TimerHooker](https://greasyfork.org/en/scripts/438894-timerhooker-english-version)
 
 ### General
 - [ChatGPT](https://chat.openai.com/)
