@@ -19,6 +19,12 @@
 - [quizlet](https://quizlet.com/search)
 - [brainly](https://brainly.com/app/ask?q=)
 
+## Quizlet
+- uBO filter to remove answer/defintion blur
+```
+quizlet.com##+js(set-local-storage-item, setPageVisitsCount, $remove$)
+```
+
 ## Edpuzzle
 - [edpuzzle-answers](https://github.com/ading2210/edpuzzle-answers)
   - [Edpuzzle Answers Script](https://edpuzzle.hs.vc/)
