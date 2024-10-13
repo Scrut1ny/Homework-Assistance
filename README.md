@@ -37,7 +37,7 @@ quizlet.com##+js(set-local-storage-item, setPageVisitsCount, $remove$)
 
 
 ## Blooket
-
+- [Highlight Answers](https://greasyfork.org/en/scripts/462957-highlight-answers)
 
 ## Bypass
 - [12ft](https://12ft.io/)
