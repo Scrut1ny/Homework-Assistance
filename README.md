@@ -34,7 +34,9 @@ quizlet.com##+js(set-local-storage-item, setPageVisitsCount, $remove$)
 - [quizizz-cheat](https://github.com/gbaranski/quizizz-cheat)
 
 ## Kahoot
-
+- [quizit.online](https://quizit.online/services/kahoot/)
+- [cheatnetwork.eu](https://cheatnetwork.eu/services/kahoot)
+- [kahootbotter.vercel.app](https://kahootbotter.vercel.app/)
 
 ## Blooket
 - [Highlight Answers](https://greasyfork.org/en/scripts/462957-highlight-answers)
