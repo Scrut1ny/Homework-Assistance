@@ -51,6 +51,7 @@ quizlet.com##+js(set-local-storage-item, setPageVisitsCount, $remove$)
 - [calculatorsoup](https://www.calculatorsoup.com/)
 - [omnicalculator](https://www.omnicalculator.com/)
 - [wolframalpha](https://www.wolframalpha.com/)
+- [thetawise](https://thetawise.ai/)
 
 ## English
 - [Plagiarism Checker (Grammarly)](https://www.grammarly.com/plagiarism-checker)
