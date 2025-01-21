@@ -84,6 +84,12 @@ MCGRAW10
 SECURITYVUE
 ```
 
+## ChatGPT CompTIA/CCNA GPTs
+- CompTIA Security+ Exam Prep Pro
+- CompTIA Network+
+- Comptia A+ Exam Study Coach
+- CCNA Network Expert
+
 ## Exam Study Resource Websites
 - [examcompass](https://www.examcompass.com/)
 
