@@ -46,6 +46,7 @@ quizlet.com##+js(set-local-storage-item, setPageVisitsCount, $remove$)
 
 ## Math
 - [mathway](https://www.mathway.com/)
+- [symbolab](https://www.symbolab.com/)
 - [cymath](https://www.cymath.com/)
 - [desmos](https://www.desmos.com/calculator)
 - [calculatorsoup](https://www.calculatorsoup.com/)
