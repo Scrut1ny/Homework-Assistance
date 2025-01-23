@@ -10,7 +10,9 @@
 - [js-canvastransfer](https://github.com/Cloud7050/js-canvastransfer)
 
 ## General
+- [Duck.ai](https://duckduckgo.com/?q=DuckDuckGo+AI+Chat&ia=chat&duckai=1)
 - [ChatGPT](https://chat.openai.com/)
+- [DeepSeek](https://chat.deepseek.com/)
 - [School Cheats](https://schoolcheats.pages.dev/dashboard/)
 - [homeworkify](https://homeworkify.eu/mirror-1/)
 - [cheatnetwork](https://cheatnetwork.eu/services)
