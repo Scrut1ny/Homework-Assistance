@@ -1,6 +1,6 @@
 ## ACE (American Council on Education) Credits
 
-| Website | Accepted Status | Proctor Status |
+| Website | Accepted Status | Proctored Status |
 |-|-|-|
 | [Sophia](https://www.sophia.org/) | [Check](https://www.sophia.org/find-your-school/) | ❌ |
 | [Study](https://study.com/) | [Check](https://study.com/college/school/index.html#transferSearch) | ✅ |
