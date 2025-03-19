@@ -1,10 +1,10 @@
 ## ACE (American Council on Education) Credits
 
-| Website | Accepted Status | Proctored Status |
-|-|-|-|
-| [Sophia](https://www.sophia.org/) | [Check](https://www.sophia.org/find-your-school/) | ❌ |
-| [Study](https://study.com/) | [Check](https://study.com/college/school/index.html#transferSearch) | ✅ |
-| [StraighterLine](https://straighterline.com/) | [Check]() | ❔ |
+| Website | Accepted Status | Cost | Proctored Status |
+|-|-|-|-|
+| [Sophia](https://www.sophia.org/) | [Check](https://www.sophia.org/find-your-school/) | $99/m | ❌ |
+| [Study](https://study.com/) | [Check](https://study.com/college/school/index.html#transferSearch) | ❔ | ✅ |
+| [StraighterLine](https://straighterline.com/) | [Check]() | ❔ | ❔ |
 
 - Make sure to check which universities accept ACE credits!
 
