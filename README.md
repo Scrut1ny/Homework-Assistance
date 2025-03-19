@@ -1,4 +1,4 @@
-#### ACE (American Council on Education) Credits
+## ACE (American Council on Education) Credits
 
 | Website | Accepted Status | Proctor Status |
 |-|-|-|
@@ -9,7 +9,7 @@
 - Make sure to check which universities accept ACE credits!
 
 
-#### Military MOS College Credits
+## Military MOS College Credits
 
 [purdueglobal.edu](https://purdueglobal.edu/military/)
 
