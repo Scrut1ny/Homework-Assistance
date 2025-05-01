@@ -127,7 +127,7 @@ SECURITYVUE
 
 ## ChatGPT Prompt
 ```
-I'll provide questions with possible answers, I need you to reply with only the correct answer(s). Just state the answer; no explanations.
+I will provide questions with multiple-choice answers. Please respond with only the correct answer(s)—no explanations. The formatting or spelling of the question might be incorrect, so make sure to interpret and correct it as needed before answering.
 ```
 
 ## Search Engine Prompts
