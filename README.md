@@ -5,17 +5,27 @@
 | [Sophia](https://www.sophia.org/) | [Check](https://www.sophia.org/find-your-school/) | $99/m | ❌ |
 | [Study](https://study.com/) | [Check](https://study.com/college/school/index.html#transferSearch) | ❔ | ✅ |
 | [StraighterLine](https://straighterline.com/) | [Check]() | ❔ | ❔ |
-| [CLEP](https://clep.collegeboard.org/) | [Check](https://clep.collegeboard.org/clep-college-credit-policy-search) | $99/Per Exam | ✅ |
+| [CLEP](https://clep.collegeboard.org/) | [Check](https://clep.collegeboard.org/clep-college-credit-policy-search) | $99/Per Exam (Free if in military) | ✅ |
 
 - Make sure to check which universities accept ACE credits!
 
+---
+
+## WGU (Western Governors University)
+
+- https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated.html
+  - https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated/program-guide.html
+- https://partners.wgu.edu/accelerated-it-bachelors-and-masters-bs-in-it-ms-in-it-management
+
+- https://docs.google.com/spreadsheets/d/1ofLYyfxrhPO1hDsO0j4Jh6vwnhgHMv9Ql7GLSvK6O-8/edit?gid=958761730#gid=958761730
+
+---
 
 ## Military MOS College Credits
 
 [purdueglobal.edu](https://purdueglobal.edu/military/)
 
-
-
+---
 
 ## Canvas
 - [ivylearn](https://ivylearn.ivytech.edu/)
