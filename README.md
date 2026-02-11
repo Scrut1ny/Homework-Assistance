@@ -15,11 +15,12 @@
 
 - https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated.html
   - https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated/program-guide.html
-- https://partners.wgu.edu/accelerated-it-bachelors-and-masters-bs-in-it-ms-in-it-management
 
-- https://docs.google.com/spreadsheets/d/1ofLYyfxrhPO1hDsO0j4Jh6vwnhgHMv9Ql7GLSvK6O-8/edit?gid=958761730#gid=958761730
+- https://partners.wgu.edu/home
+  - `WGU` + `Sophia Learning LLC` + `BS Information Technology`
+    - [WGU Transfer Pathways Agreement](https://partners.wgu.edu/transfer-pathway-agreement?uniqueId=BSIT7110&collegeCode=IT&instId=796&programId=235)
 
-- NOTICE: WGU only accepts certifications completed within the last 5 years.
+- **NOTICE**: *WGU only accepts certifications completed within the last 5 years.*
 
 ---
 
