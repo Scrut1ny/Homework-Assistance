@@ -19,6 +19,8 @@
 
 - https://docs.google.com/spreadsheets/d/1ofLYyfxrhPO1hDsO0j4Jh6vwnhgHMv9Ql7GLSvK6O-8/edit?gid=958761730#gid=958761730
 
+- NOTICE: WGU only accepts certifications completed within the last 5 years.
+
 ---
 
 ## Military MOS College Credits
