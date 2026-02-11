@@ -22,6 +22,8 @@
 
 - **NOTICE**: *WGU only accepts certifications completed within the last 5 years.*
 
+- Military funding - [Declare Funding](https://my.wgu.edu/student-support/military-and-veterans/military-support-new)
+
 ---
 
 ## Military MOS College Credits
