@@ -17,12 +17,14 @@
   - https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated/program-guide.html
 
 - https://partners.wgu.edu/home
-  - `WGU` + `Sophia Learning LLC` + `BS Information Technology`
-    - [WGU Transfer Pathways Agreement](https://partners.wgu.edu/transfer-pathway-agreement?uniqueId=BSIT7110&collegeCode=IT&instId=796&programId=235)
+  - `Sophia Learning LLC` + `WGU` + `BS Information Technology` = [Available ACE Approved courses](https://partners.wgu.edu/transfer-pathway-agreement?uniqueId=BSIT7110&collegeCode=IT&instId=796&programId=235)
+  - `Study.com` + `WGU` + `BS Information Technology` = [Available ACE Approved courses](https://partners.wgu.edu/transfer-pathway-agreement?uniqueId=BSIT4424&collegeCode=IT&instId=678&programId=235)
 
-- **NOTICE**: *WGU only accepts certifications completed within the last 5 years.*
+- Certifications
+  - **NOTICE**: *WGU only accepts certifications completed within the last 5 years.*
 
-- Military funding - [Declare Funding](https://my.wgu.edu/student-support/military-and-veterans/military-support-new)
+- Military
+  - Funding - [Declare Funding](https://my.wgu.edu/student-support/military-and-veterans/military-support-new)
 
 ---
 
