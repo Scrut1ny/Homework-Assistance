@@ -13,15 +13,24 @@
 
 ## WGU (Western Governors University)
 
-- https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated.html
-  - https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated/program-guide.html
+- **Information Technology - B.S.**
+  - [OVERVIEW](https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program.html)
+  - [Program Guide](https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/program-guide.html)
+
+- **Accelerated IT Bachelor's and Master's Degree**
+  - [OVERVIEW](https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated.html)
+  - [Program Guide](https://www.wgu.edu/online-it-degrees/information-technology-bachelors-program/accelerated/program-guide.html)
 
 - https://partners.wgu.edu/home
   - `Sophia Learning LLC` + `WGU` + `BS Information Technology` = [Available ACE Approved courses](https://partners.wgu.edu/transfer-pathway-agreement?uniqueId=BSIT7110&collegeCode=IT&instId=796&programId=235)
   - `Study.com` + `WGU` + `BS Information Technology` = [Available ACE Approved courses](https://partners.wgu.edu/transfer-pathway-agreement?uniqueId=BSIT4424&collegeCode=IT&instId=678&programId=235)
 
-- Certifications
-  - **NOTICE**: *WGU only accepts certifications completed within the last 5 years.*
+> [!IMPORTANT]
+> ### IMPORTANT NOTES
+> - *WGU only accepts certifications completed within the last 5 years.*
+> - *Applicants may transfer credit up to and not exceeding seventy-five (75) percent of their program.*
+> - *Transfer credit is evaluated on a programmatic basis and is not automatically guaranteed. (Audit their work!)*
+> - *Once enrolled, additional transfer credit requests may be limited or restricted.*
 
 - Military
   - Funding - [Declare Funding](https://my.wgu.edu/student-support/military-and-veterans/military-support-new)
