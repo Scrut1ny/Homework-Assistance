@@ -8,7 +8,7 @@
 | [CLEP](https://clep.collegeboard.org/) | [Check](https://clep.collegeboard.org/clep-college-credit-policy-search) | $99/Per Exam (Free if in military) | ✅ |
 
 > [!IMPORTANT]
-> - *Verify which universities accept third-party ACE credits first!*
+> - *First verify whether your institution accepts ACE credits from the specific third-party provider listed above that you plan to use.*
 
 ---
 
