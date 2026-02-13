@@ -26,7 +26,6 @@
   - `Study.com` + `WGU` + `BS Information Technology` = [Available ACE Approved courses](https://partners.wgu.edu/transfer-pathway-agreement?uniqueId=BSIT4424&collegeCode=IT&instId=678&programId=235)
 
 > [!IMPORTANT]
-> ### IMPORTANT NOTES
 > - *WGU only accepts certifications completed within the last 5 years.*
 > - *Applicants may transfer credit up to and not exceeding seventy-five (75) percent of their program.*
 > - *Transfer credit is evaluated on a programmatic basis and is not automatically guaranteed. (Audit their work!)*
