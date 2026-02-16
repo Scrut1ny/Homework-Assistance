@@ -86,7 +86,8 @@
 
 ## Canvas LMS
 - [Official Canvas LMS GitHub](https://github.com/instructure/canvas-lms)
-  - [Canvas Quiz Blocker](https://github.com/erict963/canvas-quiz-tracking-blocker)
+  - [event_trackers](https://github.com/instructure/canvas-lms/tree/master/ui/shared/quiz-log-auditing/jquery/event_trackers)
+- [Canvas Quiz Blocker](https://github.com/erict963/canvas-quiz-tracking-blocker)
 
 ## General
 - [homeworkify](https://homeworkify.eu/mirror-1/)
