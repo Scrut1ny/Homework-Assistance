@@ -84,9 +84,9 @@
 
 
 
-## Canvas Cheats
-- [canvas-hack](https://github.com/strix/canvas-hack)
-- [js-canvastransfer](https://github.com/Cloud7050/js-canvastransfer)
+## Canvas LMS
+- [Official Canvas LMS GitHub](https://github.com/instructure/canvas-lms)
+  - [Canvas Quiz Blocker](https://github.com/erict963/canvas-quiz-tracking-blocker)
 
 ## General
 - [homeworkify](https://homeworkify.eu/mirror-1/)
