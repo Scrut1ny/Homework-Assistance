@@ -1,48 +1,51 @@
 // ==UserScript==
 // @name         StealthMode (Event Blocking)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Block visibility, focus, mouse events, and pagehide detection
 // @match        *://*/*
 // @grant        none
 // ==/UserScript==
 
-(function() {
-    'use strict';
+(() => {
+  'use strict';
 
-    // List of events to block
-    const blockedEvents = [
-        'visibilitychange',
-        'webkitvisibilitychange',
-        'mozvisibilitychange',
-        'pagehide',
-        'mouseenter',
-        'mouseleave',
-        'focusin',
-        'focusout',
-        'focus',
-        'blur'
-    ];
+  const blocked = new Set([
+    'visibilitychange',
+    'webkitvisibilitychange',
+    'mozvisibilitychange',
+    'pagehide',
+    'mouseenter',
+    'mouseleave',
+    'focusin',
+    'focusout',
+    'focus',
+    'blur',
+  ]);
 
-    // ---------- 1. Stop all blocked events ----------
-    blockedEvents.forEach(event => {
-        window.addEventListener(event, e => e.stopImmediatePropagation(), true);
-        document.addEventListener(event, e => e.stopImmediatePropagation(), true);
-    });
+  // 1) Stop blocked events at capture phase early
+  const blocker = e => e.stopImmediatePropagation();
+  for (const type of blocked) {
+    window.addEventListener(type, blocker, true);
+    document.addEventListener(type, blocker, true);
+  }
 
-    // ---------- 2. Override addEventListener to prevent future event listeners ----------
-    const originalAddEventListener = EventTarget.prototype.addEventListener;
-    EventTarget.prototype.addEventListener = function(type, listener, options) {
-        if (blockedEvents.includes(type)) return; // Block event listeners for specific events
-        return originalAddEventListener.call(this, type, listener, options);
-    };
+  // 2) Prevent future listeners for blocked events
+  const { addEventListener } = EventTarget.prototype;
+  EventTarget.prototype.addEventListener = function (type, listener, options) {
+    if (blocked.has(type)) return;
+    return addEventListener.call(this, type, listener, options);
+  };
 
-    // ---------- 3. Neutralize inline handlers (like onfocus) ----------
-    blockedEvents.forEach(event => {
-        const prop = 'on' + event;
-        Object.defineProperty(window, prop, { value: null, writable: false });
-        Object.defineProperty(document, prop, { value: null, writable: false });
-    });
+  // 3) Neutralize inline handlers
+  for (const type of blocked) {
+    const prop = 'on' + type;
+    Object.defineProperty(window, prop, { value: null, writable: false });
+    Object.defineProperty(document, prop, { value: null, writable: false });
+    if (document.documentElement) {
+      Object.defineProperty(document.documentElement, prop, { value: null, writable: false });
+    }
+  }
 
-    console.info('StealthMode - Event Blocking Active ✅');
+  console.info('StealthMode - Event Blocking Active ✅');
 })();
