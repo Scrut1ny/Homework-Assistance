@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         NoTrace
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/Scrut1ny
 // @version      1.1
 // @description  Block visibility, focus, mouse events, and pagehide detection
 // @match        *://*/*
