@@ -38,8 +38,17 @@
     function toast(msg) {
         const el = document.createElement("div");
         el.textContent = msg;
-        el.style.cssText =
-            "position:fixed;bottom:20px;right:20px;padding:8px 12px;background:rgba(0,0,0,.8);color:#fff;border-radius:6px;font-size:12px;z-index:99999;";
+        el.style.cssText = [
+            "position:fixed",
+            "bottom:20px",
+            "right:20px",
+            "padding:8px 12px",
+            "background:rgba(0,0,0,.8)",
+            "color:#fff",
+            "border-radius:6px",
+            "font-size:12px",
+            "z-index:99999",
+        ].join(";");
         document.body.appendChild(el);
         setTimeout(() => el.remove(), 1000);
     }
@@ -135,7 +144,10 @@
         if (!questionEl || !answerEls.length) return null;
 
         const question = questionEl.textContent.trim();
-        const answers = Array.from(answerEls).map((el, i) => `${i + 1}. ${el.textContent.trim()}`);
+        const letters = "abcdefghijklmnopqrstuvwxyz";
+        const answers = Array.from(answerEls).map(
+            (el, i) => `${letters[i] || "?"}.) ${el.textContent.trim()}`
+        );
 
         return `Question:\n${question}\n\nAnswers:\n${answers.join("\n")}`;
     }
