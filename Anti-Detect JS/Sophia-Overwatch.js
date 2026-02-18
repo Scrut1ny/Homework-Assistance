@@ -174,14 +174,37 @@
     function extractQuestionData() {
         const legacyContainer = $(".assessment-question-inner .question");
         if (legacyContainer) {
-            const paragraphs = $$("p", legacyContainer)
-                .map((p) => textLinesWithAlts(p).join(" "))
-                .filter(Boolean);
+            const promptParts = [];
+            let pendingImages = [];
+
+            const pushImages = () => {
+                if (!pendingImages.length) return;
+                promptParts.push(`Image Description:\n${pendingImages.join("\n")}`);
+                pendingImages = [];
+            };
+
+            Array.from(legacyContainer.childNodes).forEach((node) => {
+                if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+                if (node.matches("p")) {
+                    pushImages();
+                    const text = textLinesWithAlts(node).join(" ");
+                    if (text) promptParts.push(text);
+                    return;
+                }
+
+                if (node.matches("img, figure")) {
+                    const alts = imageAlts(node);
+                    if (alts.length) pendingImages.push(...alts);
+                }
+            });
+
+            pushImages();
 
             return {
                 statement: null,
                 promptLabel: "Question, Instruction, or Fill in the Blank",
-                prompt: paragraphs.join("\n\n"),
+                prompt: promptParts.join("\n\n"),
                 promptImages: [],
             };
         }
