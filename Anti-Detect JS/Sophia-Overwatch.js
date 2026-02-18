@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      5.6
+// @version      5.7
 // @description  Copies Q&A, shows a live status panel, and intercepts trackers
 // @match        https://*.sophia.org/*
 // @run-at       document-end
@@ -159,6 +159,30 @@
             .filter(Boolean);
     }
 
+    function splitImagesByPrompt(questionBlock, promptNode) {
+        const before = [];
+        const after = [];
+        const images = Array.from(questionBlock.querySelectorAll("img"));
+
+        images.forEach((img) => {
+            const alt = img.getAttribute("alt")?.trim();
+            if (!alt) return;
+
+            if (
+                promptNode &&
+                (promptNode.contains(img) ||
+                    (promptNode.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING))
+            ) {
+                after.push(alt);
+                return;
+            }
+
+            before.push(alt);
+        });
+
+        return { before, after };
+    }
+
     function extractQuestionData() {
         const legacyQuestion = $(".assessment-question-inner .question p");
         if (legacyQuestion) {
@@ -166,6 +190,7 @@
                 statement: null,
                 promptLabel: "Question",
                 prompt: legacyQuestion.textContent.trim(),
+                promptImages: [],
             };
         }
 
@@ -174,13 +199,16 @@
 
         const statementLines = [];
         const promptLines = [];
+        let promptNode = null;
 
-        const paragraphs = Array.from(questionBlock.querySelectorAll("p"))
+        const paragraphNodes = Array.from(questionBlock.querySelectorAll("p"));
+        const paragraphs = paragraphNodes
             .map((p) => p.textContent.trim())
             .filter(Boolean);
 
-        if (paragraphs.length === 1) {
-            const lines = normalizeQuestionLines(questionBlock.querySelector("p"));
+        if (paragraphNodes.length === 1) {
+            promptNode = paragraphNodes[0];
+            const lines = normalizeQuestionLines(promptNode);
             if (lines.length > 1) {
                 statementLines.push(...lines.slice(0, -1));
                 promptLines.push(lines[lines.length - 1]);
@@ -188,10 +216,14 @@
                 promptLines.push(lines[0]);
             }
         } else if (paragraphs.length > 1) {
+            promptNode = paragraphNodes[paragraphNodes.length - 1];
             const lastParagraph = paragraphs[paragraphs.length - 1];
             promptLines.push(lastParagraph);
 
             paragraphs.slice(0, -1).forEach((line) => statementLines.push(line));
+        } else if (paragraphs.length === 1) {
+            promptNode = paragraphNodes[0];
+            promptLines.push(paragraphs[0]);
         }
 
         const tables = Array.from(questionBlock.querySelectorAll("table"));
@@ -206,13 +238,17 @@
             }
         }
 
-        const imageLines = renderImagesAsText(questionBlock);
-        if (imageLines.length) {
+        const { before: statementImages, after: promptImages } = splitImagesByPrompt(
+            questionBlock,
+            promptNode
+        );
+
+        if (statementImages.length) {
             if (statementLines.length) {
                 statementLines.push("");
             }
             statementLines.push("Image Description:");
-            statementLines.push(...imageLines);
+            statementLines.push(...statementImages);
         }
 
         if (!statementLines.length && !promptLines.length) {
@@ -229,6 +265,7 @@
             statement,
             promptLabel: "Instruction or Question",
             prompt,
+            promptImages,
         };
     }
 
@@ -272,6 +309,11 @@
             parts.push(`Statement:\n${qData.statement}`);
         }
         parts.push(`${qData.promptLabel}:\n${qData.prompt}`);
+
+        if (qData.promptImages?.length) {
+            parts.push(`Image Description:\n${qData.promptImages.join("\n")}`);
+        }
+
         parts.push(`Possible answers:\n${answers.join("\n")}`);
 
         return parts.join("\n\n");
@@ -392,7 +434,7 @@
                 <div class="hp-kv hp-kv-with-toggle">
                     <span>User ID</span>
                     <b id="hp-userid"></b>
-                    <button id="hp-privacy-toggle" class="is-on" title="Privacy toggle">���</button>
+                    <button id="hp-privacy-toggle" class="is-on" title="Privacy toggle">🔒</button>
                 </div>
             </div>
 
