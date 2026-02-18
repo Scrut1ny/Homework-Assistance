@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      6.2
+// @version      6.5
 // @description  Copies Q&A and intercepts trackers
 // @match        https://*.sophia.org/*
 // @run-at       document-end
@@ -172,12 +172,16 @@
     }
 
     function extractQuestionData() {
-        const legacyQuestion = $(".assessment-question-inner .question p");
-        if (legacyQuestion) {
+        const legacyContainer = $(".assessment-question-inner .question");
+        if (legacyContainer) {
+            const paragraphs = $$("p", legacyContainer)
+                .map((p) => textLinesWithAlts(p).join(" "))
+                .filter(Boolean);
+
             return {
                 statement: null,
-                promptLabel: "Question",
-                prompt: legacyQuestion.textContent.trim(),
+                promptLabel: "Question, Instruction, or Fill in the Blank",
+                prompt: paragraphs.join("\n\n"),
                 promptImages: [],
             };
         }
@@ -263,7 +267,7 @@
 
         return {
             statement,
-            promptLabel: "Instruction or Question",
+            promptLabel: "Question, Instruction, or Fill in the Blank",
             prompt,
             promptImages,
         };
