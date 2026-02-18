@@ -149,7 +149,7 @@
             (el, i) => `${letters[i] || "?"}.) ${el.textContent.trim()}`
         );
 
-        return `Question:\n${question}\n\nAnswers:\n${answers.join("\n")}`;
+        return `Question:\n${question}\n\nPossible answers:\n${answers.join("\n")}`;
     }
 
     function copyOutput(output) {
