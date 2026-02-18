@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Sophia Overwatch
-// @namespace    https://example.com/
+// @namespace    https://github.com/Scrut1ny
 // @version      4.8
 // @description  Compact panel + auto Q/A copy + tracker block toggle
 // @match        *://*.sophia.org/*
