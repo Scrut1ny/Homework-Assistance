@@ -19,6 +19,7 @@
     let scriptObs = null;
     let blockerOn = true;
     let privacyOn = true;
+    let logContainer = null;
 
     const $ = (s, r = document) => r.querySelector(s);
     const $$ = (s, r = document) => r.querySelectorAll(s);
@@ -41,6 +42,72 @@
             "position:fixed;bottom:20px;right:20px;padding:8px 12px;background:rgba(0,0,0,.8);color:#fff;border-radius:6px;font-size:12px;z-index:99999;";
         document.body.appendChild(el);
         setTimeout(() => el.remove(), 1000);
+    }
+
+    function ensureLogContainer() {
+        if (logContainer) return logContainer;
+
+        logContainer = document.createElement("div");
+        logContainer.id = "hp-log-container";
+        document.body.appendChild(logContainer);
+
+        const style = document.createElement("style");
+        style.textContent = `
+        #hp-log-container {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 999999;
+            pointer-events: none;
+            align-items: flex-end;
+        }
+        .hp-log {
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border: 1px solid #31ff5e;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: "Consolas", monospace;
+            box-shadow: 0 0 8px rgba(49, 255, 94, 0.3);
+            animation: hp-log-fade 10s ease forwards;
+            transform: translateY(0);
+            opacity: 1;
+            white-space: nowrap;
+            width: fit-content;
+            max-width: none;
+        }
+        .hp-log-domain {
+            color: #ff4d4d;
+        }
+        @keyframes hp-log-fade {
+            0% { opacity: 1; transform: translateY(0); }
+            75% { opacity: 1; transform: translateY(-6px); }
+            100% { opacity: 0; transform: translateY(-16px); }
+        }
+        `;
+        document.head.appendChild(style);
+
+        return logContainer;
+    }
+
+    function pushLog(domain) {
+        const container = ensureLogContainer();
+        const el = document.createElement("div");
+        el.className = "hp-log";
+        el.innerHTML = `🛡️ Intercepted: <span class="hp-log-domain">${domain}</span>`;
+
+        container.appendChild(el);
+
+        const maxLogs = 4;
+        while (container.children.length > maxLogs) {
+            container.removeChild(container.firstChild);
+        }
+
+        setTimeout(() => el.remove(), 10200);
     }
 
     function copyText(text) {
@@ -92,15 +159,6 @@
         copyOutput(out);
     }
 
-    function dataLayerValue(key) {
-        const layer = unsafeWindow?.dataLayer || window.dataLayer;
-        if (!Array.isArray(layer)) return null;
-        for (let i = layer.length - 1; i >= 0; i--) {
-            if (layer[i] && key in layer[i]) return layer[i][key];
-        }
-        return null;
-    }
-
     function getUserData() {
         const el = $("#current_user_data");
         const first = el?.getAttribute("data-first-name");
@@ -113,7 +171,7 @@
 
     function logBlocked(src) {
         const hit = blockedHosts.find((h) => src.includes(h));
-        if (hit) console.log(`🛰️ Intercepted tracker: ${hit} — blocked at load time.`);
+        if (hit) pushLog(hit);
     }
 
     function isBlocked(src) {
