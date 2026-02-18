@@ -1,80 +1,82 @@
 // ==UserScript==
-// @name         Extract Question & Answers (Auto Update + Clipboard)
-// @namespace    https://app.sophia.org/
-// @version      2.2
-// @description  Extracts Q/A, waits for dynamic content, auto-updates on question change, copies to clipboard
-// @match        *://*/*
+// @name         Sophia Overwatch (minimal)
+// @namespace    https://github.com/Scrut1ny
+// @version      1.0
+// @description  Auto-copies Q&A from milestone and challenge sections
+// @match        https://*.sophia.org/*
+// @run-at       document-end
 // @grant        GM_setClipboard
 // ==/UserScript==
 
 (function () {
-  "use strict";
+    "use strict";
 
-  let lastOutput = "";
+    let lastOutput = "";
 
-  function extractQuestionAndAnswers() {
-    const questionEl = document.querySelector(".assessment-question-inner .question p");
-    const answerEls = document.querySelectorAll(
-      ".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p"
-    );
+    const $ = (s, r = document) => r.querySelector(s);
+    const $$ = (s, r = document) => r.querySelectorAll(s);
 
-    if (!questionEl || answerEls.length === 0) {
-      return null;
+    function copyText(text) {
+        if (typeof GM_setClipboard === "function") {
+            GM_setClipboard(text);
+            return Promise.resolve(true);
+        }
+        if (navigator.clipboard?.writeText) {
+            return navigator.clipboard.writeText(text).then(() => true);
+        }
+        return Promise.resolve(false);
     }
 
-    const question = questionEl.textContent.trim();
-    const answers = Array.from(answerEls).map((el, i) => `${i + 1}. ${el.textContent.trim()}`);
+    function extractQA() {
+        let questionEl = $(".assessment-question-inner .question p");
+        let answerEls = $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p");
 
-    return `Question:\n${question}\n\nAnswers:\n${answers.join("\n")}`;
-  }
+        if (!questionEl) {
+            questionEl = $(".challenge-v2-question__text p");
+        }
+        if (!answerEls.length) {
+            answerEls = $$(".challenge-v2-answer__list .challenge-v2-answer__text p");
+        }
 
-  function showToast(message) {
-    const toast = document.createElement("div");
-    toast.textContent = message;
-    toast.style.position = "fixed";
-    toast.style.bottom = "20px";
-    toast.style.right = "20px";
-    toast.style.padding = "10px 14px";
-    toast.style.background = "rgba(0,0,0,0.8)";
-    toast.style.color = "#fff";
-    toast.style.borderRadius = "6px";
-    toast.style.fontSize = "14px";
-    toast.style.zIndex = "99999";
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 1500);
-  }
+        if (!questionEl || !answerEls.length) return null;
 
-  function copyToClipboard(text) {
-    if (typeof GM_setClipboard === "function") {
-      GM_setClipboard(text);
-      return Promise.resolve(true);
+        const question = questionEl.textContent.trim();
+        const letters = "abcdefghijklmnopqrstuvwxyz";
+        const answers = Array.from(answerEls).map(
+            (el, i) => `${letters[i] || "?"}.) ${el.textContent.trim()}`
+        );
+
+        return `Question:\n${question}\n\nAnswers:\n${answers.join("\n")}`;
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text).then(() => true);
+
+    function copyIfChanged() {
+        const out = extractQA();
+        if (!out || out === lastOutput) return;
+        lastOutput = out;
+        copyText(out).catch(() => {});
     }
-    return Promise.resolve(false);
-  }
 
-  function renderIfChanged() {
-    const output = extractQuestionAndAnswers();
-    if (!output || output === lastOutput) return;
+    function attachObserver() {
+        const root =
+            $(".assessment-question-inner") ||
+            $(".assessment-question-block") ||
+            $(".assessment-take__question-area") ||
+            $(".challenge-v2-question__text");
 
-    lastOutput = output;
-    copyToClipboard(output)
-      .then((ok) => showToast(ok ? "Copied to clipboard!" : "Clipboard unavailable."))
-      .catch(() => showToast("Clipboard copy failed."));
-  }
+        if (!root) return;
 
-  function observeForChanges() {
-    const observer = new MutationObserver(() => {
-      renderIfChanged();
-    });
+        const observer = new MutationObserver(copyIfChanged);
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
+    }
 
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    renderIfChanged(); // initial attempt
-  }
+    function start() {
+        copyIfChanged();
+        attachObserver();
+        setInterval(copyIfChanged, 1200);
+    }
 
-  window.addEventListener("load", observeForChanges);
-  window.extractQA = renderIfChanged;
-})();
+    (function waitForBody() {
+        if (document.body) return start();
+        setTimeout(waitForBody, 200);
+    })();
 })();
