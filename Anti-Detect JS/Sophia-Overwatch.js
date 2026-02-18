@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      5.7
+// @version      5.8
 // @description  Copies Q&A, shows a live status panel, and intercepts trackers
 // @match        https://*.sophia.org/*
 // @run-at       document-end
@@ -269,23 +269,26 @@
         };
     }
 
+    function getTextWithImageAlts(container) {
+        if (!container) return "";
+        const clone = container.cloneNode(true);
+
+        clone.querySelectorAll("img").forEach((img) => {
+            const alt = img.getAttribute("alt")?.trim() || "";
+            img.replaceWith(document.createTextNode(alt));
+        });
+
+        return clone.textContent.replace(/\s+/g, " ").trim();
+    }
+
     function extractAnswerText(el, index) {
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const prefix = `${letters[index] || "?"}.) `;
 
-        const imageAlts = renderImagesAsText(el);
-        if (imageAlts.length) {
-            return `${prefix}${imageAlts.join(" ")}`;
-        }
-
         const valueEl = el.querySelector("div");
-        if (valueEl) {
-            const value = valueEl.textContent.trim();
-            return `${prefix}${value}`;
-        }
+        const value = getTextWithImageAlts(valueEl || el);
 
-        const text = el.textContent.trim();
-        return `${prefix}${text}`;
+        return `${prefix}${value}`;
     }
 
     function extractQA() {
