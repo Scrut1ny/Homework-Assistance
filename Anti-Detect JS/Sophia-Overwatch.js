@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      5.9
+// @version      6.0
 // @description  Copies Q&A, shows a live status panel, and intercepts trackers
 // @match        https://*.sophia.org/*
 // @run-at       document-end
@@ -130,15 +130,27 @@
         return Promise.resolve(false);
     }
 
-    function normalizeQuestionLines(el) {
-        if (!el) return [];
-        const html = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
-        const temp = document.createElement("div");
-        temp.innerHTML = html;
-        return temp.textContent
+    function getTextLinesWithImageAlts(container) {
+        if (!container) return [];
+        const clone = container.cloneNode(true);
+
+        clone.querySelectorAll("img").forEach((img) => {
+            const alt = img.getAttribute("alt")?.trim() || "";
+            img.replaceWith(document.createTextNode(alt));
+        });
+
+        clone.querySelectorAll("br").forEach((br) => {
+            br.replaceWith(document.createTextNode("\n"));
+        });
+
+        return clone.textContent
             .split("\n")
             .map((line) => line.trim())
             .filter(Boolean);
+    }
+
+    function getTextWithImageAlts(container) {
+        return getTextLinesWithImageAlts(container).join("\n");
     }
 
     function renderTableAsText(table) {
@@ -159,28 +171,18 @@
             .filter(Boolean);
     }
 
-    function splitImagesByPrompt(questionBlock, promptNode) {
-        const before = [];
-        const after = [];
-        const images = Array.from(questionBlock.querySelectorAll("img"));
+    function getStandaloneImages(questionBlock) {
+        return Array.from(questionBlock.querySelectorAll("img")).filter(
+            (img) => !img.closest("p")
+        );
+    }
 
-        images.forEach((img) => {
-            const alt = img.getAttribute("alt")?.trim();
-            if (!alt) return;
+    function extractParagraphLineData(paragraph) {
+        const lines = getTextLinesWithImageAlts(paragraph);
+        const imageAlts = renderImagesAsText(paragraph);
+        const imageOnly = lines.filter((line) => imageAlts.includes(line));
 
-            if (
-                promptNode &&
-                (promptNode.contains(img) ||
-                    (promptNode.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING))
-            ) {
-                after.push(alt);
-                return;
-            }
-
-            before.push(alt);
-        });
-
-        return { before, after };
+        return { lines, imageOnly };
     }
 
     function extractQuestionData() {
@@ -198,32 +200,95 @@
         if (!questionBlock) return null;
 
         const statementLines = [];
+        const statementImages = [];
+        const promptImages = [];
         const promptLines = [];
-        let promptNode = null;
 
         const paragraphNodes = Array.from(questionBlock.querySelectorAll("p"));
-        const paragraphs = paragraphNodes
-            .map((p) => p.textContent.trim())
-            .filter(Boolean);
+        const paragraphData = paragraphNodes.map((p) => extractParagraphLineData(p));
 
-        if (paragraphNodes.length === 1) {
-            promptNode = paragraphNodes[0];
-            const lines = normalizeQuestionLines(promptNode);
-            if (lines.length > 1) {
-                statementLines.push(...lines.slice(0, -1));
-                promptLines.push(lines[lines.length - 1]);
-            } else if (lines.length === 1) {
-                promptLines.push(lines[0]);
+        const lastPromptIndex = [...paragraphData]
+            .map((data, index) => ({
+                index,
+                hasText: data.lines.some((line) => !data.imageOnly.includes(line)),
+            }))
+            .filter((item) => item.hasText)
+            .map((item) => item.index)
+            .pop();
+
+        if (paragraphData.length === 1) {
+            const { lines, imageOnly } = paragraphData[0];
+            const imageOnlySet = new Set(imageOnly);
+
+            const lastTextIndex = [...lines]
+                .map((line, index) => ({
+                    index,
+                    isImageOnly: imageOnlySet.has(line),
+                }))
+                .filter((item) => !item.isImageOnly)
+                .map((item) => item.index)
+                .pop();
+
+            if (lastTextIndex !== undefined) {
+                lines.slice(0, lastTextIndex).forEach((line) => {
+                    if (imageOnlySet.has(line)) {
+                        statementImages.push(line);
+                    } else {
+                        statementLines.push(line);
+                    }
+                });
+
+                promptLines.push(lines[lastTextIndex]);
+
+                lines.slice(lastTextIndex + 1).forEach((line) => {
+                    if (imageOnlySet.has(line)) {
+                        promptImages.push(line);
+                    } else {
+                        promptLines.push(line);
+                    }
+                });
             }
-        } else if (paragraphs.length > 1) {
-            promptNode = paragraphNodes[paragraphNodes.length - 1];
-            const lastParagraph = paragraphs[paragraphs.length - 1];
-            promptLines.push(lastParagraph);
+        } else if (lastPromptIndex !== undefined) {
+            paragraphData.forEach((data, index) => {
+                const imageOnlySet = new Set(data.imageOnly);
+                if (index < lastPromptIndex) {
+                    data.lines.forEach((line) => {
+                        if (imageOnlySet.has(line)) {
+                            statementImages.push(line);
+                        } else {
+                            statementLines.push(line);
+                        }
+                    });
+                    return;
+                }
 
-            paragraphs.slice(0, -1).forEach((line) => statementLines.push(line));
-        } else if (paragraphs.length === 1) {
-            promptNode = paragraphNodes[0];
-            promptLines.push(paragraphs[0]);
+                if (index > lastPromptIndex) {
+                    data.lines.forEach((line) => {
+                        if (imageOnlySet.has(line)) {
+                            promptImages.push(line);
+                        }
+                    });
+                    return;
+                }
+
+                const nonImageLines = data.lines.filter((line) => !imageOnlySet.has(line));
+                if (nonImageLines.length) {
+                    promptLines.push(nonImageLines.join(" "));
+                }
+
+                data.lines.forEach((line, lineIndex) => {
+                    if (!imageOnlySet.has(line)) {
+                        return;
+                    }
+
+                    const isAfterPrompt = lineIndex > data.lines.lastIndexOf(nonImageLines.at(-1));
+                    if (isAfterPrompt) {
+                        promptImages.push(line);
+                    } else {
+                        statementImages.push(line);
+                    }
+                });
+            });
         }
 
         const tables = Array.from(questionBlock.querySelectorAll("table"));
@@ -238,10 +303,22 @@
             }
         }
 
-        const { before: statementImages, after: promptImages } = splitImagesByPrompt(
-            questionBlock,
-            promptNode
-        );
+        if (paragraphNodes[lastPromptIndex]) {
+            const promptNode = paragraphNodes[lastPromptIndex];
+            getStandaloneImages(questionBlock).forEach((img) => {
+                const alt = img.getAttribute("alt")?.trim();
+                if (!alt) return;
+
+                const isAfterPrompt =
+                    promptNode.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING;
+
+                if (isAfterPrompt) {
+                    promptImages.push(alt);
+                } else {
+                    statementImages.push(alt);
+                }
+            });
+        }
 
         if (statementImages.length) {
             if (statementLines.length) {
@@ -252,7 +329,7 @@
         }
 
         if (!statementLines.length && !promptLines.length) {
-            const fallbackLines = normalizeQuestionLines(questionBlock);
+            const fallbackLines = getTextLinesWithImageAlts(questionBlock);
             if (fallbackLines.length) {
                 promptLines.push(fallbackLines.join(" "));
             }
@@ -267,26 +344,6 @@
             prompt,
             promptImages,
         };
-    }
-
-    function getTextWithImageAlts(container) {
-        if (!container) return "";
-        const clone = container.cloneNode(true);
-
-        clone.querySelectorAll("img").forEach((img) => {
-            const alt = img.getAttribute("alt")?.trim() || "";
-            img.replaceWith(document.createTextNode(alt));
-        });
-
-        clone.querySelectorAll("br").forEach((br) => {
-            br.replaceWith(document.createTextNode("\n"));
-        });
-
-        return clone.textContent
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .join("\n");
     }
 
     function formatAnswerText(text, prefix) {
