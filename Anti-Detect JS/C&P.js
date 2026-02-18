@@ -1,77 +1,80 @@
 // ==UserScript==
-// @name         Extract Question & Answers to Clipboard (Q/A List)
-// @namespace    https://example.com/
-// @version      1.1
-// @description  Extracts question + answers and copies formatted Q/A list to clipboard
+// @name         Extract Question & Answers (Auto Update + Clipboard)
+// @namespace    https://app.sophia.org/
+// @version      2.2
+// @description  Extracts Q/A, waits for dynamic content, auto-updates on question change, copies to clipboard
 // @match        *://*/*
 // @grant        GM_setClipboard
 // ==/UserScript==
 
 (function () {
-    "use strict";
+  "use strict";
 
-    function extractQuestionAndAnswers() {
-        const questionEl = document.querySelector(".assessment-question-inner .question p");
-        const answerEls = document.querySelectorAll(
-            ".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p"
-        );
+  let lastOutput = "";
 
-        if (!questionEl || answerEls.length === 0) {
-            return null;
-        }
+  function extractQuestionAndAnswers() {
+    const questionEl = document.querySelector(".assessment-question-inner .question p");
+    const answerEls = document.querySelectorAll(
+      ".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p"
+    );
 
-        const question = questionEl.textContent.trim();
-        const answers = Array.from(answerEls).map((el, i) => `${i + 1}. ${el.textContent.trim()}`);
-
-        const formatted = `Question:\n${question}\n\nAnswers:\n${answers.join("\n")}`;
-        return formatted;
+    if (!questionEl || answerEls.length === 0) {
+      return null;
     }
 
-    function showToast(message) {
-        const toast = document.createElement("div");
-        toast.textContent = message;
-        toast.style.position = "fixed";
-        toast.style.bottom = "20px";
-        toast.style.right = "20px";
-        toast.style.padding = "10px 14px";
-        toast.style.background = "rgba(0,0,0,0.8)";
-        toast.style.color = "#fff";
-        toast.style.borderRadius = "6px";
-        toast.style.fontSize = "14px";
-        toast.style.zIndex = "99999";
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2000);
+    const question = questionEl.textContent.trim();
+    const answers = Array.from(answerEls).map((el, i) => `${i + 1}. ${el.textContent.trim()}`);
+
+    return `Question:\n${question}\n\nAnswers:\n${answers.join("\n")}`;
+  }
+
+  function showToast(message) {
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    toast.style.position = "fixed";
+    toast.style.bottom = "20px";
+    toast.style.right = "20px";
+    toast.style.padding = "10px 14px";
+    toast.style.background = "rgba(0,0,0,0.8)";
+    toast.style.color = "#fff";
+    toast.style.borderRadius = "6px";
+    toast.style.fontSize = "14px";
+    toast.style.zIndex = "99999";
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 1500);
+  }
+
+  function copyToClipboard(text) {
+    if (typeof GM_setClipboard === "function") {
+      GM_setClipboard(text);
+      return Promise.resolve(true);
     }
-
-    function copyToClipboard(text) {
-        if (typeof GM_setClipboard === "function") {
-            GM_setClipboard(text);
-            return Promise.resolve();
-        }
-        return navigator.clipboard.writeText(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(() => true);
     }
+    return Promise.resolve(false);
+  }
 
-    function run() {
-        const result = extractQuestionAndAnswers();
-        if (!result) {
-            showToast("No question/answers found.");
-            return;
-        }
+  function renderIfChanged() {
+    const output = extractQuestionAndAnswers();
+    if (!output || output === lastOutput) return;
 
-        copyToClipboard(result)
-        .then(() => {
-            console.log("Copied:\n" + result);
-            showToast("Question & answers copied!");
-        })
-        .catch((err) => {
-            console.error("Clipboard copy failed", err);
-            showToast("Copy failed. See console.");
-        });
-    }
+    lastOutput = output;
+    copyToClipboard(output)
+      .then((ok) => showToast(ok ? "Copied to clipboard!" : "Clipboard unavailable."))
+      .catch(() => showToast("Clipboard copy failed."));
+  }
 
-    // Run once on load
-    window.addEventListener("load", run);
+  function observeForChanges() {
+    const observer = new MutationObserver(() => {
+      renderIfChanged();
+    });
 
-    // Optional: expose a manual trigger in console
-    window.extractQA = run;
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    renderIfChanged(); // initial attempt
+  }
+
+  window.addEventListener("load", observeForChanges);
+  window.extractQA = renderIfChanged;
+})();
 })();
