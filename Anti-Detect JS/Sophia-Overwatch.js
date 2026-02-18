@@ -55,11 +55,22 @@
     }
 
     function extractQA() {
-        const q = $(".assessment-question-inner .question p");
-        const a = $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p");
-        if (!q || !a.length) return null;
-        const answers = Array.from(a).map((el, i) => `${i + 1}. ${el.textContent.trim()}`);
-        return `Question:\n${q.textContent.trim()}\n\nAnswers:\n${answers.join("\n")}`;
+        let questionEl = $(".assessment-question-inner .question p");
+        let answerEls = $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p");
+
+        if (!questionEl) {
+            questionEl = $(".challenge-v2-question__text p");
+        }
+        if (!answerEls.length) {
+            answerEls = $$(".challenge-v2-answer__list .challenge-v2-answer__text p");
+        }
+
+        if (!questionEl || !answerEls.length) return null;
+
+        const question = questionEl.textContent.trim();
+        const answers = Array.from(answerEls).map((el, i) => `${i + 1}. ${el.textContent.trim()}`);
+
+        return `Question:\n${question}\n\nAnswers:\n${answers.join("\n")}`;
     }
 
     function copyOutput(output) {
@@ -98,18 +109,6 @@
             name: first && last ? `${first} ${last}` : "Unknown",
             userId: el?.getAttribute("data-id") || "Unknown",
         };
-    }
-
-    function getUnitTitle() {
-        const h1 = $(".flexible-assessment-header__title h1");
-        return h1 ? h1.textContent.trim() : "Unknown";
-    }
-
-    function getQuestionStats() {
-        const total = $$(".flexible-assessment-header__number-milestone").length;
-        const header = $(".assessment-question-block h3");
-        const match = header?.textContent.match(/Question\s+(\d+)/i);
-        return { total: total || "Unknown", current: match ? match[1] : "Unknown" };
     }
 
     function logBlocked(src) {
@@ -201,11 +200,6 @@
                     <button id="hp-privacy-toggle" class="is-on" title="Privacy toggle">🔒</button>
                 </div>
             </div>
-
-            <div class="hp-section">Core</div>
-            <div class="hp-line"><span class="hp-label">Course..:</span><span class="hp-value" id="hp-course"></span></div>
-            <div class="hp-line"><span class="hp-label">Unit....:</span><span class="hp-value" id="hp-unit"></span></div>
-            <div class="hp-line"><span class="hp-label">Question:</span><span class="hp-value"><span id="hp-qcurrent"></span> / <span id="hp-qtotal"></span></span></div>
 
             <div class="hp-sep"></div>
 
@@ -314,27 +308,6 @@
             border-color: #31ff5e;
             box-shadow: 0 0 6px rgba(49, 255, 94, 0.5);
         }
-        .hp-section {
-            margin-top: 4px;
-            padding-top: 4px;
-            border-top: 1px dashed #1e5328;
-            color: #9bffb5;
-            text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 0.6px;
-        }
-        .hp-line {
-            display: flex;
-            align-items: center;
-            gap: 1ch;
-        }
-        .hp-label {
-            color: #9bffb5;
-            width: 9ch;
-        }
-        .hp-value {
-            color: #b7ffcc;
-        }
         .hp-sep {
             margin-top: 6px;
             border-top: 1px dashed #1e5328;
@@ -388,16 +361,8 @@
 
     function fillPanel() {
         const user = getUserData();
-        const course = dataLayerValue("course_name") || "Unknown";
-        const unit = getUnitTitle();
-        const q = getQuestionStats();
-
         $("#hp-name").textContent = privacyOn ? "Hidden" : user.name;
         $("#hp-userid").textContent = privacyOn ? "Hidden" : user.userId;
-        $("#hp-course").textContent = course;
-        $("#hp-unit").textContent = unit;
-        $("#hp-qcurrent").textContent = q.current;
-        $("#hp-qtotal").textContent = q.total;
     }
 
     function fillPanelThrottled() {
