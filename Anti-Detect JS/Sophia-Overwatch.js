@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      5.0
+// @version      5.4
 // @description  Copies Q&A, shows a live status panel, and intercepts trackers
 // @match        https://*.sophia.org/*
 // @run-at       document-end
@@ -130,26 +130,131 @@
         return Promise.resolve(false);
     }
 
+    function normalizeQuestionLines(el) {
+        if (!el) return [];
+        const html = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
+        const temp = document.createElement("div");
+        temp.innerHTML = html;
+        return temp.textContent
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean);
+    }
+
+    function renderTableAsText(table) {
+        const rows = Array.from(table.querySelectorAll("tr"));
+        return rows
+            .map((row) => {
+                const cells = Array.from(row.querySelectorAll("th, td"))
+                    .map((cell) => cell.textContent.trim())
+                    .filter(Boolean);
+                return cells.join(" | ");
+            })
+            .filter(Boolean);
+    }
+
+    function extractQuestionData() {
+        const legacyQuestion = $(".assessment-question-inner .question p");
+        if (legacyQuestion) {
+            return {
+                statement: null,
+                promptLabel: "Question",
+                prompt: legacyQuestion.textContent.trim(),
+            };
+        }
+
+        const questionBlock = $(".challenge-v2-question__text");
+        if (!questionBlock) return null;
+
+        const statementLines = [];
+        const promptLines = [];
+
+        const paragraphs = Array.from(questionBlock.querySelectorAll("p"))
+            .map((p) => p.textContent.trim())
+            .filter(Boolean);
+
+        if (paragraphs.length === 1) {
+            const lines = normalizeQuestionLines(questionBlock.querySelector("p"));
+            if (lines.length > 1) {
+                statementLines.push(...lines.slice(0, -1));
+                promptLines.push(lines[lines.length - 1]);
+            } else if (lines.length === 1) {
+                promptLines.push(lines[0]);
+            }
+        } else if (paragraphs.length > 1) {
+            const lastParagraph = paragraphs[paragraphs.length - 1];
+            promptLines.push(lastParagraph);
+
+            paragraphs.slice(0, -1).forEach((line) => statementLines.push(line));
+        }
+
+        const tables = Array.from(questionBlock.querySelectorAll("table"));
+        if (tables.length) {
+            const tableLines = tables.flatMap((table) => renderTableAsText(table));
+            if (tableLines.length) {
+                if (statementLines.length) {
+                    statementLines.push("");
+                }
+                statementLines.push("Data Table:");
+                statementLines.push(...tableLines);
+            }
+        }
+
+        if (!statementLines.length && !promptLines.length) {
+            const fallbackLines = normalizeQuestionLines(questionBlock);
+            if (fallbackLines.length) {
+                promptLines.push(fallbackLines.join(" "));
+            }
+        }
+
+        const statement = statementLines.length ? statementLines.join("\n") : null;
+        const prompt = promptLines.join(" ").trim();
+
+        return {
+            statement,
+            promptLabel: "Instruction or Question",
+            prompt,
+        };
+    }
+
+    function extractAnswerText(el, index) {
+        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const prefix = `${letters[index] || "?"}.) `;
+
+        const valueEl = el.querySelector("div");
+        if (valueEl) {
+            const value = valueEl.textContent.trim();
+            return `${prefix}${value}`;
+        }
+
+        const text = el.textContent.trim();
+        return `${prefix}${text}`;
+    }
+
     function extractQA() {
-        let questionEl = $(".assessment-question-inner .question p");
-        let answerEls = $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p");
+        const qData = extractQuestionData();
+        if (!qData) return null;
 
-        if (!questionEl) {
-            questionEl = $(".challenge-v2-question__text p");
-        }
+        let answerEls =
+            $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p");
         if (!answerEls.length) {
-            answerEls = $$(".challenge-v2-answer__list .challenge-v2-answer__text p");
+            answerEls = $$(".challenge-v2-answer__list .challenge-v2-answer__text");
         }
 
-        if (!questionEl || !answerEls.length) return null;
+        if (!answerEls.length) return null;
 
-        const question = questionEl.textContent.trim();
-        const letters = "abcdefghijklmnopqrstuvwxyz";
         const answers = Array.from(answerEls).map(
-            (el, i) => `${letters[i] || "?"}.) ${el.textContent.trim()}`
+            (el, i) => `- ${extractAnswerText(el, i)}`
         );
 
-        return `Question:\n${question}\n\nPossible answers:\n${answers.join("\n")}`;
+        const parts = [];
+        if (qData.statement) {
+            parts.push(`Statement:\n${qData.statement}`);
+        }
+        parts.push(`${qData.promptLabel}:\n${qData.prompt}`);
+        parts.push(`Possible answers:\n${answers.join("\n")}`);
+
+        return parts.join("\n\n");
     }
 
     function copyOutput(output) {
