@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      5.5
+// @version      5.6
 // @description  Copies Q&A, shows a live status panel, and intercepts trackers
 // @match        https://*.sophia.org/*
 // @run-at       document-end
@@ -236,6 +236,11 @@
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const prefix = `${letters[index] || "?"}.) `;
 
+        const imageAlts = renderImagesAsText(el);
+        if (imageAlts.length) {
+            return `${prefix}${imageAlts.join(" ")}`;
+        }
+
         const valueEl = el.querySelector("div");
         if (valueEl) {
             const value = valueEl.textContent.trim();
@@ -387,7 +392,7 @@
                 <div class="hp-kv hp-kv-with-toggle">
                     <span>User ID</span>
                     <b id="hp-userid"></b>
-                    <button id="hp-privacy-toggle" class="is-on" title="Privacy toggle">🔒</button>
+                    <button id="hp-privacy-toggle" class="is-on" title="Privacy toggle">���</button>
                 </div>
             </div>
 
