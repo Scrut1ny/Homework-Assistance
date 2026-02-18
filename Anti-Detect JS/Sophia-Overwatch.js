@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      5.4
+// @version      5.5
 // @description  Copies Q&A, shows a live status panel, and intercepts trackers
 // @match        https://*.sophia.org/*
 // @run-at       document-end
@@ -153,6 +153,12 @@
             .filter(Boolean);
     }
 
+    function renderImagesAsText(container) {
+        return Array.from(container.querySelectorAll("img"))
+            .map((img) => img.getAttribute("alt")?.trim())
+            .filter(Boolean);
+    }
+
     function extractQuestionData() {
         const legacyQuestion = $(".assessment-question-inner .question p");
         if (legacyQuestion) {
@@ -198,6 +204,15 @@
                 statementLines.push("Data Table:");
                 statementLines.push(...tableLines);
             }
+        }
+
+        const imageLines = renderImagesAsText(questionBlock);
+        if (imageLines.length) {
+            if (statementLines.length) {
+                statementLines.push("");
+            }
+            statementLines.push("Image Description:");
+            statementLines.push(...imageLines);
         }
 
         if (!statementLines.length && !promptLines.length) {
