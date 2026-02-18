@@ -7,6 +7,7 @@
 // @run-at       document-end
 // @grant        GM_setClipboard
 // @grant        unsafeWindow
+// @icon
 // ==/UserScript==
 
 (function () {
@@ -17,6 +18,7 @@
     let observer = null;
     let scriptObs = null;
     let blockerOn = true;
+    let privacyOn = true;
 
     const $ = (s, r = document) => r.querySelector(s);
     const $$ = (s, r = document) => r.querySelectorAll(s);
@@ -154,11 +156,29 @@
         scriptObs = null;
     }
 
+    function updateBlockerButton() {
+        const btn = $("#hp-block-toggle");
+        if (!btn) return;
+        btn.textContent = `${blockerOn ? "🛡️" : "⚠️"} Intercept Traffic`;
+    }
+
     function toggleBlocker(on) {
         blockerOn = on;
         $("#hp-block-toggle")?.classList.toggle("is-on", on);
+        updateBlockerButton();
         on ? startBlocker() : stopBlocker();
         toast(`Tracker block: ${on ? "ON" : "OFF"}`);
+    }
+
+    function togglePrivacy(on) {
+        privacyOn = on;
+        const btn = $("#hp-privacy-toggle");
+        if (btn) {
+            btn.classList.toggle("is-on", on);
+            btn.textContent = on ? "🔒" : "🔓";
+        }
+        fillPanel();
+        toast(`Privacy: ${on ? "ON" : "OFF"}`);
     }
 
     function createPanel() {
@@ -171,18 +191,27 @@
             <div class="hp-title">Sophia Overwatch</div>
 
             <div class="hp-grid">
-                <div class="hp-kv"><span>User</span><b id="hp-name"></b></div>
-                <div class="hp-kv"><span>User ID</span><b id="hp-userid"></b></div>
+                <div class="hp-kv">
+                    <span>User</span>
+                    <b id="hp-name"></b>
+                </div>
+                <div class="hp-kv hp-kv-with-toggle">
+                    <span>User ID</span>
+                    <b id="hp-userid"></b>
+                    <button id="hp-privacy-toggle" class="is-on" title="Privacy toggle">🔒</button>
+                </div>
             </div>
 
             <div class="hp-section">Core</div>
-            <div class="hp-line">Course: <span id="hp-course"></span></div>
-            <div class="hp-line">Unit: <span id="hp-unit"></span></div>
-            <div class="hp-line">Question: <span id="hp-qcurrent"></span> / <span id="hp-qtotal"></span></div>
+            <div class="hp-line"><span class="hp-label">Course..:</span><span class="hp-value" id="hp-course"></span></div>
+            <div class="hp-line"><span class="hp-label">Unit....:</span><span class="hp-value" id="hp-unit"></span></div>
+            <div class="hp-line"><span class="hp-label">Question:</span><span class="hp-value"><span id="hp-qcurrent"></span> / <span id="hp-qtotal"></span></span></div>
+
+            <div class="hp-sep"></div>
 
             <div class="hp-actions">
                 <button id="hp-copy-btn">📋 Copy Q&A</button>
-                <button id="hp-block-toggle" class="is-on" title="Block trackers">⛔ Intercept Traffic</button>
+                <button id="hp-block-toggle" class="is-on" title="Block trackers">🛡️ Intercept Traffic</button>
             </div>
         </div>
         `;
@@ -210,11 +239,11 @@
         #sophia-overwatch-panel-content {
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            font-size: 12px;
+            gap: 8px;
+            font-size: 14px;
         }
         .hp-title {
-            font-size: 12px;
+            font-size: 14px;
             font-weight: bold;
             text-transform: uppercase;
             border-bottom: 1px solid #1e5328;
@@ -227,17 +256,63 @@
         .hp-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 4px 10px;
-            font-size: 11px;
+            gap: 6px 10px;
+            font-size: 13px;
+            align-items: start;
+        }
+        .hp-kv {
+            display: grid;
+            grid-template-rows: auto auto;
+            row-gap: 4px;
+        }
+        .hp-kv-with-toggle {
+            grid-template-columns: 1fr auto;
+            grid-template-rows: auto auto;
+            column-gap: 8px;
+            align-items: center;
         }
         .hp-kv span {
             color: #8fffaa;
             display: block;
-            font-size: 10px;
+            font-size: 12px;
         }
         .hp-kv b {
             color: #b7ffcc;
             font-weight: 600;
+            font-size: 13px;
+        }
+        .hp-kv-with-toggle span {
+            grid-column: 1;
+            grid-row: 1;
+        }
+        .hp-kv-with-toggle b {
+            grid-column: 1;
+            grid-row: 2;
+        }
+        #hp-privacy-toggle {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+            align-self: center;
+            justify-self: end;
+            padding: 5px 10px;
+            background: #2a0f0f;
+            border: 1px solid #ff2b2b;
+            color: #ff9b9b;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 6px;
+            line-height: 1;
+            height: 28px;
+            width: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #hp-privacy-toggle.is-on {
+            background: #0f1a0f;
+            color: #31ff5e;
+            border-color: #31ff5e;
+            box-shadow: 0 0 6px rgba(49, 255, 94, 0.5);
         }
         .hp-section {
             margin-top: 4px;
@@ -245,47 +320,70 @@
             border-top: 1px dashed #1e5328;
             color: #9bffb5;
             text-transform: uppercase;
-            font-size: 10px;
+            font-size: 12px;
             letter-spacing: 0.6px;
         }
-        .hp-line span {
+        .hp-line {
+            display: flex;
+            align-items: center;
+            gap: 1ch;
+        }
+        .hp-label {
+            color: #9bffb5;
+            width: 9ch;
+        }
+        .hp-value {
             color: #b7ffcc;
+        }
+        .hp-sep {
+            margin-top: 6px;
+            border-top: 1px dashed #1e5328;
         }
         .hp-actions {
             display: flex;
             gap: 6px;
             margin-top: 6px;
         }
-        #hp-copy-btn,
-        #hp-block-toggle {
+        #hp-copy-btn {
             flex: 1;
-            padding: 5px 6px;
+            padding: 7px 8px;
             background: #0f1a0f;
             border: 1px solid #31ff5e;
             color: #31ff5e;
             cursor: pointer;
-            font-size: 11px;
+            font-size: 12px;
             text-transform: uppercase;
+            white-space: nowrap;
         }
         #hp-copy-btn:hover {
             background: #173117;
         }
         #hp-block-toggle {
-            border-color: #ff2b2b;
+            flex: 1;
+            padding: 7px 8px;
             background: #2a0f0f;
+            border: 1px solid #ff2b2b;
             color: #ff9b9b;
+            cursor: pointer;
+            font-size: 12px;
+            text-transform: uppercase;
+            white-space: nowrap;
         }
         #hp-block-toggle.is-on {
-            background: #151515;
-            color: #ff2b2b;
-            box-shadow: 0 0 8px rgba(255, 43, 43, 0.5);
+            background: #0f1a0f;
+            color: #31ff5e;
+            border-color: #31ff5e;
+            box-shadow: 0 0 8px rgba(49, 255, 94, 0.5);
         }
         `;
         document.head.appendChild(style);
 
         $("#hp-copy-btn").onclick = forceCopyNow;
         $("#hp-block-toggle").onclick = () => toggleBlocker(!blockerOn);
+        $("#hp-privacy-toggle").onclick = () => togglePrivacy(!privacyOn);
+
         toggleBlocker(true);
+        togglePrivacy(true);
     }
 
     function fillPanel() {
@@ -294,8 +392,8 @@
         const unit = getUnitTitle();
         const q = getQuestionStats();
 
-        $("#hp-name").textContent = user.name;
-        $("#hp-userid").textContent = user.userId;
+        $("#hp-name").textContent = privacyOn ? "Hidden" : user.name;
+        $("#hp-userid").textContent = privacyOn ? "Hidden" : user.userId;
         $("#hp-course").textContent = course;
         $("#hp-unit").textContent = unit;
         $("#hp-qcurrent").textContent = q.current;
