@@ -183,6 +183,13 @@
                 pendingImages = [];
             };
 
+            const pushTable = (table) => {
+                const tableLines = renderTableAsText(table);
+                if (!tableLines.length) return;
+                pushImages();
+                promptParts.push(`Data Table:\n${tableLines.join("\n")}`);
+            };
+
             Array.from(legacyContainer.childNodes).forEach((node) => {
                 if (node.nodeType !== Node.ELEMENT_NODE) return;
 
@@ -190,6 +197,11 @@
                     pushImages();
                     const text = textLinesWithAlts(node).join(" ");
                     if (text) promptParts.push(text);
+                    return;
+                }
+
+                if (node.matches("table")) {
+                    pushTable(node);
                     return;
                 }
 
