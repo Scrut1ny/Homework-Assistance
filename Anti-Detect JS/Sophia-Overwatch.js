@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      6.5
-// @description  Copies Q&A and intercepts trackers
+// @version      6.8
+// @description  Copies Q&A and blocks tracking
 // @match        https://*.sophia.org/*
-// @run-at       document-end
+// @run-at       document-start
 // @grant        GM_setClipboard
 // @grant        unsafeWindow
 // @icon
@@ -13,6 +13,9 @@
 (function () {
     "use strict";
 
+    /**********************************************************************
+     *  STATE
+     **********************************************************************/
     let lastOutput = "";
     let lastRoot = null;
     let rootObserver = null;
@@ -20,6 +23,9 @@
     let logContainer = null;
     let renderScheduled = false;
 
+    /**********************************************************************
+     *  HELPERS
+     **********************************************************************/
     const $ = (s, r = document) => r.querySelector(s);
     const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
@@ -50,68 +56,6 @@
         ].join(";");
         document.body.appendChild(el);
         setTimeout(() => el.remove(), 1000);
-    }
-
-    function ensureLogContainer() {
-        if (logContainer) return logContainer;
-        logContainer = document.createElement("div");
-        logContainer.id = "hp-log-container";
-        document.body.appendChild(logContainer);
-
-        const style = document.createElement("style");
-        style.textContent = `
-        #hp-log-container {
-            position: fixed;
-            right: 20px;
-            bottom: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            z-index: 999999;
-            pointer-events: none;
-            align-items: flex-end;
-        }
-        .hp-log {
-            background: rgba(0, 0, 0, 0.8);
-            color: #fff;
-            border: 1px solid #31ff5e;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-family: "Consolas", monospace;
-            box-shadow: 0 0 8px rgba(49, 255, 94, 0.3);
-            animation: hp-log-fade 10s ease forwards;
-            transform: translateY(0);
-            opacity: 1;
-            white-space: nowrap;
-            width: fit-content;
-            max-width: none;
-        }
-        .hp-log-domain {
-            color: #ff4d4d;
-        }
-        @keyframes hp-log-fade {
-            0% { opacity: 1; transform: translateY(0); }
-            75% { opacity: 1; transform: translateY(-6px); }
-            100% { opacity: 0; transform: translateY(-16px); }
-        }
-        `;
-        document.head.appendChild(style);
-        return logContainer;
-    }
-
-    function pushLog(domain) {
-        const container = ensureLogContainer();
-        const el = document.createElement("div");
-        el.className = "hp-log";
-        el.innerHTML = `🛡️ Intercepted: <span class="hp-log-domain">${domain}</span>`;
-        container.appendChild(el);
-
-        while (container.children.length > 4) {
-            container.removeChild(container.firstChild);
-        }
-
-        setTimeout(() => el.remove(), 10200);
     }
 
     function copyText(text) {
@@ -171,6 +115,218 @@
         return [prefix + first, ...rest.map((line) => `        ${line}`)].join("\n");
     }
 
+    function createFunctionProxy(target, shouldBlock) {
+        return new Proxy(target || function () {}, {
+            apply(fn, thisArg, args) {
+                if (shouldBlock(args)) return;
+                return Reflect.apply(fn, thisArg, args);
+            },
+        });
+    }
+
+    function definePropertyProxy(obj, prop, onSet) {
+        let value = obj[prop];
+        Object.defineProperty(obj, prop, {
+            get() {
+                return value;
+            },
+            set(val) {
+                value = val;
+                onSet(val);
+            },
+            configurable: true,
+        });
+    }
+
+    /**********************************************************************
+     *  TRACKER LOG UI
+     **********************************************************************/
+    function ensureLogContainer() {
+        if (logContainer) return logContainer;
+        logContainer = document.createElement("div");
+        logContainer.id = "hp-log-container";
+        document.body.appendChild(logContainer);
+
+        const style = document.createElement("style");
+        style.textContent = `
+        #hp-log-container {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 999999;
+            pointer-events: none;
+            align-items: flex-end;
+        }
+        .hp-log {
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border: 1px solid #31ff5e;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: "Consolas", monospace;
+            box-shadow: 0 0 8px rgba(49, 255, 94, 0.3);
+            animation: hp-log-fade 10s ease forwards;
+            transform: translateY(0);
+            opacity: 1;
+            white-space: nowrap;
+            width: fit-content;
+            max-width: none;
+        }
+        .hp-log-domain {
+            color: #ff4d4d;
+        }
+        @keyframes hp-log-fade {
+            0% { opacity: 1; transform: translateY(0); }
+            75% { opacity: 1; transform: translateY(-6px); }
+            100% { opacity: 0; transform: translateY(-16px); }
+        }
+        `;
+        document.head.appendChild(style);
+        return logContainer;
+    }
+
+    function pushLog(message) {
+        const container = ensureLogContainer();
+        const el = document.createElement("div");
+        el.className = "hp-log";
+        el.innerHTML = `🛡️ <span class="hp-log-domain">${message}</span>`;
+        container.appendChild(el);
+
+        while (container.children.length > 4) {
+            container.removeChild(container.firstChild);
+        }
+
+        setTimeout(() => el.remove(), 10200);
+    }
+
+    /**********************************************************************
+     *  TRACKING BLOCKER (MERGED)
+     **********************************************************************/
+    const blockedDataLayerEvents = new Set([
+        "show_tour",
+        "close_tour",
+        "click_link",
+        "modal_view",
+        "alert_view",
+        "form_view",
+        "form_submit",
+        "form_field_change",
+        "form_step",
+    ]);
+
+    const blockedGaCalls = new Set(["pageview"]);
+    const blockedSnowplowCalls = new Set(["trackPageView", "trackStructEvent"]);
+
+    const sophiaBlockedMethods = [
+        "clickLinkForGA",
+        "clickModalCloseForGA",
+        "formGA",
+        "initPingator",
+        "clickToggleForGA",
+    ];
+
+    function patchDataLayer(arr) {
+        if (!Array.isArray(arr)) return;
+        const originalPush = Array.prototype.push;
+
+        arr.push = function (...args) {
+            const filtered = args.filter((entry) => {
+                if (entry && typeof entry === "object" && blockedDataLayerEvents.has(entry.event)) {
+                    pushLog(`dataLayer event: ${entry.event}`);
+                    return false;
+                }
+                return true;
+            });
+            return filtered.length > 0 ? originalPush.apply(this, filtered) : this.length;
+        };
+    }
+
+    function installSOPHIABlocks() {
+        if (typeof SOPHIA === "undefined") return false;
+
+        for (const method of sophiaBlockedMethods) {
+            if (SOPHIA[method]) {
+                SOPHIA[method] = () => pushLog(`SOPHIA.${method}()`);
+            }
+        }
+
+        if (SOPHIA.pingator) {
+            SOPHIA.pingator.setTarget = () => pushLog("SOPHIA.pingator.setTarget()");
+        }
+
+        return true;
+    }
+
+    function initTrackingBlocker() {
+        window.dataLayer = window.dataLayer || [];
+        patchDataLayer(window.dataLayer);
+        definePropertyProxy(window, "dataLayer", (val) => patchDataLayer(val));
+
+        window.ga = createFunctionProxy(window.ga, (args) => {
+            if (args[0] === "send" && blockedGaCalls.has(args[1])) {
+                pushLog(`ga(): ${args[1]}`);
+                return true;
+            }
+            return false;
+        });
+
+        window.snowplow = createFunctionProxy(window.snowplow, (args) => {
+            if (blockedSnowplowCalls.has(args[0])) {
+                const detail = args[0] === "trackStructEvent" ? (args[1]?.category || args[1]) : "";
+                pushLog(`snowplow(): ${args[0]}${detail ? ` ${detail}` : ""}`);
+                return true;
+            }
+            return false;
+        });
+
+        const originalSetItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key, value) {
+            if (key === "postponed_form_submit") {
+                pushLog(`localStorage write: ${key}`);
+                return;
+            }
+            return originalSetItem.call(this, key, value);
+        };
+
+        if (!installSOPHIABlocks()) {
+            const interval = setInterval(() => {
+                if (installSOPHIABlocks()) clearInterval(interval);
+            }, 100);
+            setTimeout(() => clearInterval(interval), 15000);
+        }
+
+        definePropertyProxy(window, "SOPHIA", (val) => {
+            if (val && typeof val === "object") installSOPHIABlocks();
+        });
+
+        const cookieDescriptor =
+            Object.getOwnPropertyDescriptor(Document.prototype, "cookie") ||
+            Object.getOwnPropertyDescriptor(HTMLDocument.prototype, "cookie");
+
+        if (cookieDescriptor?.set) {
+            Object.defineProperty(document, "cookie", {
+                get() {
+                    return cookieDescriptor.get.call(this);
+                },
+                set(val) {
+                    if (typeof val === "string" && val.startsWith("sophia_st=")) {
+                        pushLog("sophia_st cookie write");
+                        return;
+                    }
+                    return cookieDescriptor.set.call(this, val);
+                },
+                configurable: true,
+            });
+        }
+    }
+
+    /**********************************************************************
+     *  QUESTION/ANSWER EXTRACTION
+     **********************************************************************/
     function extractQuestionData() {
         const legacyContainer = $(".assessment-question-inner .question");
         if (legacyContainer) {
@@ -319,18 +475,13 @@
         const qData = extractQuestionData();
         if (!qData) return null;
 
-        const answerEls =
-            $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p") ||
-            [];
+        const legacyAnswers = $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p");
+        const challengeAnswers = $$(".challenge-v2-answer__list .challenge-v2-answer__text");
+        const answerEls = legacyAnswers.length ? legacyAnswers : challengeAnswers;
 
-        const answers =
-            answerEls.length > 0
-                ? answerEls.map((el, i) => `- ${extractAnswerText(el, i)}`)
-                : $$(".challenge-v2-answer__list .challenge-v2-answer__text").map((el, i) =>
-                      `- ${extractAnswerText(el, i)}`
-                  );
+        if (!answerEls.length) return null;
 
-        if (!answers.length) return null;
+        const answers = answerEls.map((el, i) => `- ${extractAnswerText(el, i)}`);
 
         const parts = [];
         if (qData.statement) parts.push(`Statement:\n${qData.statement}`);
@@ -343,6 +494,9 @@
         return parts.join("\n\n");
     }
 
+    /**********************************************************************
+     *  RENDER + CLIPBOARD
+     **********************************************************************/
     function renderIfChanged() {
         const out = extractQA();
         if (!out || out === lastOutput) return;
@@ -361,6 +515,9 @@
         });
     }
 
+    /**********************************************************************
+     *  TRACKER BLOCKER (SCRIPT INTERCEPT)
+     **********************************************************************/
     function isBlocked(src) {
         try {
             const url = new URL(src, location.href);
@@ -395,6 +552,9 @@
         scriptObs.observe(document.documentElement, { childList: true, subtree: true });
     }
 
+    /**********************************************************************
+     *  OBSERVERS
+     **********************************************************************/
     function attachRootObserver() {
         const root =
             $(".challenge-v2-question__text") ||
@@ -411,12 +571,16 @@
         rootObserver = new MutationObserver(() => scheduleRender());
         rootObserver.observe(root, { childList: true, subtree: true, characterData: true });
 
-        scheduleRender();
+        renderIfChanged();
     }
 
+    /**********************************************************************
+     *  INIT
+     **********************************************************************/
     function start() {
+        initTrackingBlocker();
         startBlocker();
-        scheduleRender();
+        renderIfChanged();
 
         const pageObserver = new MutationObserver(() => attachRootObserver());
         pageObserver.observe(document.documentElement, { childList: true, subtree: true });
