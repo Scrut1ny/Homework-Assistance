@@ -1,36 +1,18 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      6.8
-// @description  Copies Q&A and blocks tracking
+// @version      7.8
+// @description  Copies Q&A and blocks tracking (API-only, optimized + images)
 // @match        https://*.sophia.org/*
 // @run-at       document-start
 // @grant        GM_setClipboard
 // @grant        unsafeWindow
-// @icon
 // ==/UserScript==
 
-(function () {
+(() => {
     "use strict";
 
-    /**********************************************************************
-     *  CONFIG + STATE
-     **********************************************************************/
-    const SELECTORS = Object.freeze({
-        legacyQuestion: ".assessment-question-inner .question",
-        legacyAnswers:
-            ".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p",
-        challengeQuestion: ".challenge-v2-question__text",
-        challengeAnswers: ".challenge-v2-answer__list .challenge-v2-answer__text",
-        roots: [
-            ".challenge-v2-question__text",
-            ".assessment-question-inner",
-            ".assessment-question-block",
-            ".assessment-take__question-area",
-        ],
-    });
-
-    const blockedHosts = Object.freeze([
+    const blockedHosts = [
         "cdn.optimizely.com",
         "static.cloudflareinsights.com",
         "stat.sophia.org",
@@ -39,9 +21,9 @@
         "js.hs-scripts.com",
         "analytics.sophia.org",
         "assets.adobedtm.com",
-    ]);
+    ];
 
-    const blockedDataLayerEvents = new Set([
+    const blockedEvents = new Set([
         "show_tour",
         "close_tour",
         "click_link",
@@ -53,512 +35,399 @@
         "form_step",
     ]);
 
-    const blockedGaCalls = new Set(["pageview"]);
-    const blockedSnowplowCalls = new Set(["trackPageView", "trackStructEvent"]);
-
-    const sophiaBlockedMethods = Object.freeze([
+    const blockedGa = new Set(["pageview"]);
+    const blockedSnowplow = new Set(["trackPageView", "trackStructEvent"]);
+    const sophiaMethods = [
         "clickLinkForGA",
         "clickModalCloseForGA",
         "formGA",
         "initPingator",
         "clickToggleForGA",
-    ]);
+    ];
 
     const state = {
         lastOutput: "",
-        lastRoot: null,
-        rootObserver: null,
-        scriptObserver: null,
-        logContainer: null,
-        renderScheduled: false,
-        lastRenderAt: 0,
-        minRenderInterval: 150, // ms
+        lastId: null,
+        lastPayload: null,
+        lastPath: location.pathname,
+        lastSearch: location.search,
+        log: null,
+        logTemplate: null,
+        scriptObs: null,
+        token: 0,
+        debounce: null,
+        lastResourceName: null,
+        resourcesDirty: true,
     };
 
-    /**********************************************************************
-     *  HELPERS
-     **********************************************************************/
-    const $ = (s, r = document) => r.querySelector(s);
-    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+    const parser = new DOMParser();
 
-    function toast(msg) {
-        const el = document.createElement("div");
-        el.textContent = msg;
-        el.style.cssText = [
-            "position:fixed",
-            "bottom:20px",
-            "right:20px",
-            "padding:8px 12px",
-            "background:rgba(0,0,0,.8)",
-            "color:#fff",
-            "border-radius:6px",
-            "font-size:12px",
-            "z-index:99999",
-        ].join(";");
-        document.body.appendChild(el);
-        setTimeout(() => el.remove(), 1000);
-    }
+    const RX_BR = /<br\s*\/?>/gi;
+    const RX_P = /<\/p>\s*<p>/gi;
+    const RX_TAG = /<\/?[^>]+>/g;
+    const RX_NL = /\s+\n/g;
 
-    function copyText(text) {
-        if (typeof GM_setClipboard === "function") {
-            GM_setClipboard(text);
-            return Promise.resolve(true);
-        }
-        if (navigator.clipboard?.writeText) {
-            return navigator.clipboard.writeText(text).then(() => true);
-        }
-        return Promise.resolve(false);
-    }
+    const $all = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-    function definePropertyProxy(obj, prop, onSet) {
-        let value = obj[prop];
-        Object.defineProperty(obj, prop, {
-            get() {
-                return value;
-            },
-            set(val) {
-                value = val;
-                onSet(val);
-            },
-            configurable: true,
-        });
-    }
-
-    function createFunctionProxy(target, shouldBlock) {
-        return new Proxy(target || function () {}, {
-            apply(fn, thisArg, args) {
-                if (shouldBlock(args)) return;
-                return Reflect.apply(fn, thisArg, args);
-            },
-        });
-    }
-
-    /**********************************************************************
-     *  TEXT EXTRACTION (FAST, NO CLONE)
-     **********************************************************************/
-    function collectTextLines(node) {
-        if (!node) return [];
-        const lines = [];
-        let current = "";
-
-        const flush = () => {
-            const trimmed = current.trim();
-            if (trimmed) lines.push(trimmed);
-            current = "";
-        };
-
-        const walker = document.createTreeWalker(
-            node,
-            NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-            {
-                acceptNode(n) {
-                    if (n.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
-                    if (n.nodeType === Node.ELEMENT_NODE) return NodeFilter.FILTER_ACCEPT;
-                    return NodeFilter.FILTER_REJECT;
-                },
-            }
-        );
-
-        let currentNode = walker.currentNode;
-        while (currentNode) {
-            if (currentNode.nodeType === Node.TEXT_NODE) {
-                current += currentNode.nodeValue || "";
-            } else if (currentNode.nodeType === Node.ELEMENT_NODE) {
-                const el = currentNode;
-                if (el.tagName === "BR") {
-                    flush();
-                } else if (el.tagName === "IMG") {
-                    const alt = el.getAttribute("alt")?.trim();
-                    if (alt) current += alt;
-                }
-            }
-            currentNode = walker.nextNode();
-        }
-
-        flush();
-        return lines;
-    }
-
-    function textWithAlts(node) {
-        return collectTextLines(node).join("\n");
-    }
-
-    function imageAlts(node) {
-        return $$("img", node)
-            .map((img) => img.getAttribute("alt")?.trim())
-            .filter(Boolean);
-    }
-
-    function renderTableAsText(table) {
-        return $$("tr", table)
-            .map((row) =>
-                $$("th, td", row)
-                    .map((cell) => cell.textContent.trim())
-                    .filter(Boolean)
-                    .join(" | ")
-            )
-            .filter(Boolean);
-    }
-
-    function formatAnswerText(text, prefix) {
-        const lines = text.split("\n").filter(Boolean);
-        if (!lines.length) return prefix;
-        const [first, ...rest] = lines;
-        return [prefix + first, ...rest.map((line) => `        ${line}`)].join("\n");
-    }
-
-    /**********************************************************************
-     *  TRACKER LOG UI
-     **********************************************************************/
-    function ensureLogContainer() {
-        if (state.logContainer) return state.logContainer;
-        state.logContainer = document.createElement("div");
-        state.logContainer.id = "hp-log-container";
-        document.body.appendChild(state.logContainer);
-
+    const injectStyles = () => {
         const style = document.createElement("style");
         style.textContent = `
-        #hp-log-container {
-            position: fixed;
-            right: 16px;
-            bottom: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            z-index: 999999;
-            pointer-events: none;
-            align-items: flex-end;
-        }
-        .hp-log {
-            background: #111;
-            color: #ff4d4d;
-            border: 1px solid #2a2a2a;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-family: "Consolas", monospace;
-            animation: hp-log-fade 10s ease forwards;
-            opacity: 1;
-            white-space: nowrap;
-        }
-        .hp-log-blocked {
-            color: #ff4d4d;
-        }
-        @keyframes hp-log-fade {
-            0% { opacity: 1; transform: translateY(0); }
-            75% { opacity: 1; transform: translateY(-4px); }
-            100% { opacity: 0; transform: translateY(-10px); }
-        }
+            #hp-log-container {
+                position: fixed;
+                right: 16px;
+                bottom: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                z-index: 999999;
+                pointer-events: none;
+                align-items: flex-end;
+            }
+            .hp-log {
+                background: #111;
+                color: #ff4d4d;
+                border: 1px solid #2a2a2a;
+                padding: 6px 10px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-family: Consolas, monospace;
+                animation: hp-log-fade 10s ease forwards;
+                opacity: 1;
+                white-space: nowrap;
+            }
+            .hp-toast {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                padding: 8px 12px;
+                background: rgba(0,0,0,.8);
+                color: #fff;
+                border-radius: 6px;
+                font-size: 12px;
+                z-index: 99999;
+            }
+            @keyframes hp-log-fade {
+                0% { opacity: 1; transform: translateY(0); }
+                75% { opacity: 1; transform: translateY(-4px); }
+                100% { opacity: 0; transform: translateY(-10px); }
+            }
         `;
         document.head.appendChild(style);
-        return state.logContainer;
-    }
+    };
 
-    function pushLog(message) {
-        const container = ensureLogContainer();
+    const ensureLog = () => {
+        if (state.log) return state.log;
+        const log = document.createElement("div");
+        log.id = "hp-log-container";
+        document.body.appendChild(log);
+        state.log = log;
+
+        const tmpl = document.createElement("div");
+        tmpl.className = "hp-log";
+        state.logTemplate = tmpl;
+
+        return log;
+    };
+
+    const toast = (msg) => {
         const el = document.createElement("div");
-        el.className = "hp-log";
+        el.className = "hp-toast";
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 1000);
+    };
 
-        let display = String(message || "").trim();
-        if (/^(https?:)?\/\//i.test(display)) {
+    const copy = (t) =>
+        typeof GM_setClipboard === "function"
+            ? (GM_setClipboard(t), Promise.resolve(true))
+            : navigator.clipboard?.writeText
+            ? navigator.clipboard.writeText(t).then(() => true)
+            : Promise.resolve(false);
+
+    const proxyProp = (obj, prop, onSet) => {
+        let v = obj[prop];
+        Object.defineProperty(obj, prop, {
+            get: () => v,
+            set: (nv) => ((v = nv), onSet(nv)),
+            configurable: true,
+        });
+    };
+
+    const proxyFn = (fn, shouldBlock) =>
+        new Proxy(fn || function () {}, {
+            apply(t, thisArg, args) {
+                if (shouldBlock(args)) return;
+                return Reflect.apply(t, thisArg, args);
+            },
+        });
+
+    const pushLog = (msg) => {
+        const c = ensureLog();
+        const el = state.logTemplate ? state.logTemplate.cloneNode(true) : document.createElement("div");
+        if (!el.className) el.className = "hp-log";
+        let text = String(msg || "").trim();
+        if (/^(https?:)?\/\//i.test(text)) {
             try {
-                const url = new URL(display, location.href);
-                display = url.hostname;
+                text = new URL(text, location.href).hostname;
             } catch {}
         }
-
-        el.innerHTML = `🛡️ <span class="hp-log-domain">${display}</span>`;
-        container.appendChild(el);
-
-        while (container.children.length > 10) {
-            container.removeChild(container.firstChild);
-        }
-
+        el.innerHTML = `🛡️ <span class="hp-log-domain">${text}</span>`;
+        c.appendChild(el);
+        while (c.children.length > 10) c.removeChild(c.firstChild);
         setTimeout(() => el.remove(), 10200);
-    }
+    };
 
-    /**********************************************************************
-     *  TRACKING BLOCKER (MERGED)
-     **********************************************************************/
-    function patchDataLayer(arr) {
+    const patchDataLayer = (arr) => {
         if (!Array.isArray(arr)) return;
-        const originalPush = Array.prototype.push;
-
+        const push = Array.prototype.push;
         arr.push = function (...args) {
-            const filtered = args.filter((entry) => {
-                if (entry && typeof entry === "object" && blockedDataLayerEvents.has(entry.event)) {
-                    pushLog(`dataLayer event: ${entry.event}`);
-                    return false;
-                }
-                return true;
-            });
-            return filtered.length > 0 ? originalPush.apply(this, filtered) : this.length;
+            const filtered = args.filter(
+                (e) => !(e && typeof e === "object" && blockedEvents.has(e.event)) || (pushLog(`dataLayer: ${e.event}`), false)
+            );
+            return filtered.length ? push.apply(this, filtered) : this.length;
         };
-    }
+    };
 
-    function installSOPHIABlocks() {
+    const installSOPHIABlocks = () => {
         if (typeof SOPHIA === "undefined") return false;
-
-        for (const method of sophiaBlockedMethods) {
-            if (SOPHIA[method]) {
-                SOPHIA[method] = () => pushLog(`SOPHIA.${method}()`);
-            }
-        }
-
-        if (SOPHIA.pingator) {
-            SOPHIA.pingator.setTarget = () => pushLog("SOPHIA.pingator.setTarget()");
-        }
-
+        sophiaMethods.forEach((m) => SOPHIA[m] && (SOPHIA[m] = () => pushLog(`SOPHIA.${m}()`)));
+        if (SOPHIA.pingator) SOPHIA.pingator.setTarget = () => pushLog("SOPHIA.pingator.setTarget()");
         return true;
-    }
+    };
 
-    function initTrackingBlocker() {
+    const initTracking = () => {
         window.dataLayer = window.dataLayer || [];
         patchDataLayer(window.dataLayer);
-        definePropertyProxy(window, "dataLayer", (val) => patchDataLayer(val));
+        proxyProp(window, "dataLayer", patchDataLayer);
 
-        window.ga = createFunctionProxy(window.ga, (args) => {
-            if (args[0] === "send" && blockedGaCalls.has(args[1])) {
-                pushLog(`ga(): ${args[1]}`);
-                return true;
-            }
-            return false;
-        });
+        window.ga = proxyFn(window.ga, (a) => a[0] === "send" && blockedGa.has(a[1]) && (pushLog(`ga(): ${a[1]}`), true));
+        window.snowplow = proxyFn(window.snowplow, (a) => blockedSnowplow.has(a[0]) && (pushLog(`snowplow(): ${a[0]}`), true));
 
-        window.snowplow = createFunctionProxy(window.snowplow, (args) => {
-            if (blockedSnowplowCalls.has(args[0])) {
-                const detail = args[0] === "trackStructEvent" ? args[1]?.category || args[1] : "";
-                pushLog(`snowplow(): ${args[0]}${detail ? ` ${detail}` : ""}`);
-                return true;
-            }
-            return false;
-        });
-
-        const originalSetItem = Storage.prototype.setItem;
-        Storage.prototype.setItem = function (key, value) {
-            if (key === "postponed_form_submit") {
-                pushLog(`localStorage write: ${key}`);
-                return;
-            }
-            return originalSetItem.call(this, key, value);
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+            if (k === "postponed_form_submit") return pushLog(`localStorage: ${k}`);
+            return setItem.call(this, k, v);
         };
 
         if (!installSOPHIABlocks()) {
-            const interval = setInterval(() => {
-                if (installSOPHIABlocks()) clearInterval(interval);
-            }, 100);
-            setTimeout(() => clearInterval(interval), 15000);
+            const t = setInterval(() => installSOPHIABlocks() && clearInterval(t), 100);
+            setTimeout(() => clearInterval(t), 15000);
         }
+        proxyProp(window, "SOPHIA", (v) => v && installSOPHIABlocks());
 
-        definePropertyProxy(window, "SOPHIA", (val) => {
-            if (val && typeof val === "object") installSOPHIABlocks();
-        });
-
-        const cookieDescriptor =
+        const desc =
             Object.getOwnPropertyDescriptor(Document.prototype, "cookie") ||
             Object.getOwnPropertyDescriptor(HTMLDocument.prototype, "cookie");
-
-        if (cookieDescriptor?.set) {
+        if (desc?.set) {
             Object.defineProperty(document, "cookie", {
                 get() {
-                    return cookieDescriptor.get.call(this);
+                    return desc.get.call(this);
                 },
                 set(val) {
-                    if (typeof val === "string" && val.startsWith("sophia_st=")) {
-                        pushLog("sophia_st cookie write");
-                        return;
-                    }
-                    return cookieDescriptor.set.call(this, val);
+                    if (typeof val === "string" && val.startsWith("sophia_st=")) return pushLog("sophia_st cookie write");
+                    return desc.set.call(this, val);
                 },
                 configurable: true,
             });
         }
-    }
+    };
 
-    /**********************************************************************
-     *  QUESTION/ANSWER EXTRACTION
-     **********************************************************************/
-    function resolveQuestionBlock(root) {
-        if (root?.matches?.(SELECTORS.challengeQuestion)) return root;
-        if (root?.matches?.(SELECTORS.legacyQuestion)) return root;
-        return (
-            $(SELECTORS.challengeQuestion, root || document) ||
-            $(SELECTORS.legacyQuestion, root || document)
-        );
-    }
+    const extractQuestion = (html) => {
+        const doc = parser.parseFromString(html || "", "text/html");
+        const body = doc.body;
+        const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
 
-    function serializeQuestionBlock(block) {
-        const parts = [];
-        Array.from(block.childNodes).forEach((node) => {
-            if (node.nodeType === Node.TEXT_NODE) {
-                const text = node.nodeValue?.trim();
-                if (text) parts.push(text);
-                return;
-            }
+        let text = "";
+        let needsBreak = false;
 
-            if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const pushBreak = () => {
+            if (!needsBreak) return;
+            text += "\n\n";
+            needsBreak = false;
+        };
 
-            if (node.matches("p")) {
-                const lines = collectTextLines(node);
-                if (lines.length) parts.push(...lines);
-                return;
-            }
-
-            if (node.matches("ul, ol")) {
-                const items = $$("li", node)
-                    .map((li) => collectTextLines(li).join(" ").trim())
-                    .filter(Boolean);
-                if (items.length) {
-                    parts.push(...items.map((item) => `- ${item}`));
+        let n = walker.currentNode;
+        while (n) {
+            if (n.nodeType === 3) {
+                const v = n.nodeValue || "";
+                if (v.trim()) {
+                    pushBreak();
+                    text += v;
                 }
-                return;
-            }
-
-            if (node.matches("table")) {
-                const tableLines = renderTableAsText(node);
-                if (tableLines.length) {
-                    parts.push("Data Table:");
-                    parts.push(...tableLines);
+            } else if (n.nodeType === 1) {
+                const tag = n.tagName;
+                if (tag === "BR" || tag === "P") needsBreak = true;
+                if (tag === "IMG") {
+                    const alt = n.getAttribute("alt")?.trim();
+                    if (alt) {
+                        pushBreak();
+                        text += (text ? "\n\n" : "") + "Image Description:\n" + alt;
+                    }
                 }
-                return;
             }
+            n = walker.nextNode();
+        }
 
-            if (node.matches("img, figure")) {
-                const alts = imageAlts(node);
-                if (alts.length) {
-                    parts.push("Image Description:");
-                    parts.push(...alts);
-                }
-                return;
+        return text.trim() ? text.split(/\n{3,}/).join("\n\n") : "";
+    };
+
+    const stripHtml = (html) =>
+        (html || "")
+            .replace(RX_BR, "\n")
+            .replace(RX_P, "\n\n")
+            .replace(RX_TAG, "")
+            .replace(RX_NL, "\n")
+            .trim();
+
+    const formatAnswer = (text, prefix) => {
+        const lines = text.split("\n").filter(Boolean);
+        if (!lines.length) return prefix;
+        const [first, ...rest] = lines;
+        return [prefix + first, ...rest.map((l) => `        ${l}`)].join("\n");
+    };
+
+    const findId = () => {
+        if (!state.resourcesDirty && state.lastResourceName) {
+            const m = state.lastResourceName.match(/milestone_question_takes\/(\d+)/);
+            return m ? m[1] : null;
+        }
+        const entries = performance.getEntriesByType("resource");
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const name = entries[i]?.name || "";
+            if (name.includes("milestone_question_takes/")) {
+                state.lastResourceName = name;
+                state.resourcesDirty = false;
+                const m = name.match(/milestone_question_takes\/(\d+)/);
+                return m ? m[1] : null;
             }
-        });
+        }
+        return null;
+    };
 
-        return parts.filter(Boolean);
-    }
+    const fetchPayload = async () => {
+        const id = findId();
+        if (!id) return null;
+        if (state.lastId === id && state.lastPayload) return state.lastPayload;
 
-    function extractAnswerText(el, index) {
-        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        const prefix = `${letters[index] || "?"}.) `;
-        const valueEl = el.querySelector("div") || el;
-        return formatAnswerText(textWithAlts(valueEl), prefix);
-    }
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (!csrf) return null;
 
-    function extractQA(root) {
-        const block = resolveQuestionBlock(root);
-        if (!block) return null;
-
-        const questionLines = serializeQuestionBlock(block);
-        if (!questionLines.length) return null;
-
-        const legacyAnswers = $$(SELECTORS.legacyAnswers, document);
-        const challengeAnswers = $$(SELECTORS.challengeAnswers, document);
-        const answerEls = legacyAnswers.length ? legacyAnswers : challengeAnswers;
-
-        if (!answerEls.length) return null;
-
-        const answers = answerEls.map((el, i) => `- ${extractAnswerText(el, i)}`);
-
-        return `${questionLines.join("\n\n")}\n\nPossible answers:\n${answers.join("\n")}`;
-    }
-
-    /**********************************************************************
-     *  RENDER + CLIPBOARD
-     **********************************************************************/
-    function renderIfChanged() {
-        const out = extractQA(state.lastRoot);
-        if (!out || out === state.lastOutput) return;
-        state.lastOutput = out;
-        copyText(out)
-            .then((ok) => toast(ok ? "Copied!" : "Clipboard unavailable."))
-            .catch(() => toast("Copy failed."));
-    }
-
-    function scheduleRender() {
-        if (state.renderScheduled) return;
-        state.renderScheduled = true;
-        requestAnimationFrame(() => {
-            state.renderScheduled = false;
-            const now = Date.now();
-            if (now - state.lastRenderAt < state.minRenderInterval) return;
-            state.lastRenderAt = now;
-            renderIfChanged();
-        });
-    }
-
-    /**********************************************************************
-     *  TRACKER BLOCKER (SCRIPT INTERCEPT)
-     **********************************************************************/
-    function isBlocked(src) {
         try {
-            const url = new URL(src, location.href);
-            return blockedHosts.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
+            const res = await fetch(`/milestone_question_takes/${id}`, {
+                credentials: "include",
+                headers: {
+                    Accept: "application/json, text/javascript, */*; q=0.01",
+                    "X-CSRF-Token": csrf,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (!data?.question?.question_body || !data?.question?.answers) return null;
+            state.lastId = id;
+            state.lastPayload = data;
+            return data;
+        } catch {
+            return null;
+        }
+    };
+
+    const extractQA = async () => {
+        const d = await fetchPayload();
+        if (!d) return null;
+
+        const q = extractQuestion(d.question.question_body);
+        const a = d.question.answers || [];
+        if (!q || !a.length) return null;
+
+        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const answers = a.map((x, i) => {
+            const text = stripHtml(x.content);
+            return `- ${formatAnswer(text, `${letters[i] || "?"}.) `)}`;
+        });
+
+        return `${q}\n\nPossible answers:\n${answers.join("\n")}`;
+    };
+
+    const render = async () => {
+        const token = ++state.token;
+        const out = await extractQA();
+        if (token !== state.token || !out || out === state.lastOutput) return;
+        state.lastOutput = out;
+        copy(out).then((ok) => toast(ok ? "Copied!" : "Clipboard unavailable.")).catch(() => toast("Copy failed."));
+    };
+
+    const schedule = () => {
+        if (state.debounce) clearTimeout(state.debounce);
+        state.debounce = setTimeout(() => {
+            state.debounce = null;
+            render();
+        }, 350);
+    };
+
+    const isBlocked = (src) => {
+        try {
+            const u = new URL(src, location.href);
+            return blockedHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
         } catch {
             return false;
         }
-    }
+    };
 
-    function removeBlockedScripts(root = document) {
-        $$("script[src]", root).forEach((s) => {
+    const removeBlockedScripts = (root = document) => {
+        $all("script[src]", root).forEach((s) => {
             if (isBlocked(s.src)) {
                 pushLog(s.src);
                 s.remove();
             }
         });
-    }
+    };
 
-    function startBlocker() {
+    const startBlocker = () => {
         removeBlockedScripts();
-        if (state.scriptObserver) return;
-        state.scriptObserver = new MutationObserver((muts) => {
-            muts.forEach((m) => {
+        if (state.scriptObs) return;
+        state.scriptObs = new MutationObserver((muts) =>
+            muts.forEach((m) =>
                 m.addedNodes.forEach((n) => {
                     if (n.tagName === "SCRIPT" && n.src && isBlocked(n.src)) {
                         pushLog(n.src);
                         n.remove();
                     }
-                });
-            });
-        });
-        state.scriptObserver.observe(document.documentElement, { childList: true, subtree: true });
-    }
+                })
+            )
+        );
+        state.scriptObs.observe(document.documentElement, { childList: true, subtree: true });
+    };
 
-    /**********************************************************************
-     *  OBSERVERS
-     **********************************************************************/
-    function findRoot() {
-        for (const sel of SELECTORS.roots) {
-            const root = $(sel);
-            if (root) return root;
+    const onRoute = () => {
+        if (location.pathname !== state.lastPath || location.search !== state.lastSearch) {
+            state.lastPath = location.pathname;
+            state.lastSearch = location.search;
+            state.resourcesDirty = true;
+            schedule();
         }
-        return null;
-    }
+    };
 
-    function attachRootObserver() {
-        const root = findRoot();
-        if (root === state.lastRoot) return;
+    const hookHistory = () => {
+        const wrap = (fn) =>
+            function (...args) {
+                const ret = fn.apply(this, args);
+                onRoute();
+                return ret;
+            };
+        history.pushState = wrap(history.pushState);
+        history.replaceState = wrap(history.replaceState);
+        window.addEventListener("popstate", onRoute);
+    };
 
-        state.lastRoot = root;
-        state.rootObserver?.disconnect();
-        if (!root) return;
-
-        state.rootObserver = new MutationObserver(() => scheduleRender());
-        state.rootObserver.observe(root, { childList: true, subtree: true, characterData: true });
-
-        renderIfChanged();
-    }
-
-    /**********************************************************************
-     *  INIT
-     **********************************************************************/
-    function start() {
-        initTrackingBlocker();
+    const start = () => {
+        injectStyles();
+        hookHistory();
         startBlocker();
-        renderIfChanged();
+        render();
+    };
 
-        const pageObserver = new MutationObserver(() => attachRootObserver());
-        pageObserver.observe(document.documentElement, { childList: true, subtree: true });
-        attachRootObserver();
-    }
+    document.addEventListener("DOMContentLoaded", initTracking);
 
     (function waitForBody() {
         if (document.body) return start();
