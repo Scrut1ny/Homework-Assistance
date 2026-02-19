@@ -14,22 +14,23 @@
     "use strict";
 
     /**********************************************************************
-     *  STATE
+     *  CONFIG + STATE
      **********************************************************************/
-    let lastOutput = "";
-    let lastRoot = null;
-    let rootObserver = null;
-    let scriptObs = null;
-    let logContainer = null;
-    let renderScheduled = false;
+    const SELECTORS = Object.freeze({
+        legacyQuestion: ".assessment-question-inner .question",
+        legacyAnswers:
+            ".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p",
+        challengeQuestion: ".challenge-v2-question__text",
+        challengeAnswers: ".challenge-v2-answer__list .challenge-v2-answer__text",
+        roots: [
+            ".challenge-v2-question__text",
+            ".assessment-question-inner",
+            ".assessment-question-block",
+            ".assessment-take__question-area",
+        ],
+    });
 
-    /**********************************************************************
-     *  HELPERS
-     **********************************************************************/
-    const $ = (s, r = document) => r.querySelector(s);
-    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-
-    const blockedHosts = [
+    const blockedHosts = Object.freeze([
         "cdn.optimizely.com",
         "static.cloudflareinsights.com",
         "stat.sophia.org",
@@ -38,7 +39,47 @@
         "js.hs-scripts.com",
         "analytics.sophia.org",
         "assets.adobedtm.com",
-    ];
+    ]);
+
+    const blockedDataLayerEvents = new Set([
+        "show_tour",
+        "close_tour",
+        "click_link",
+        "modal_view",
+        "alert_view",
+        "form_view",
+        "form_submit",
+        "form_field_change",
+        "form_step",
+    ]);
+
+    const blockedGaCalls = new Set(["pageview"]);
+    const blockedSnowplowCalls = new Set(["trackPageView", "trackStructEvent"]);
+
+    const sophiaBlockedMethods = Object.freeze([
+        "clickLinkForGA",
+        "clickModalCloseForGA",
+        "formGA",
+        "initPingator",
+        "clickToggleForGA",
+    ]);
+
+    const state = {
+        lastOutput: "",
+        lastRoot: null,
+        rootObserver: null,
+        scriptObserver: null,
+        logContainer: null,
+        renderScheduled: false,
+        lastRenderAt: 0,
+        minRenderInterval: 150, // ms
+    };
+
+    /**********************************************************************
+     *  HELPERS
+     **********************************************************************/
+    const $ = (s, r = document) => r.querySelector(s);
+    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
     function toast(msg) {
         const el = document.createElement("div");
@@ -69,61 +110,6 @@
         return Promise.resolve(false);
     }
 
-    function textLinesWithAlts(node) {
-        if (!node) return [];
-        const clone = node.cloneNode(true);
-
-        clone.querySelectorAll("img").forEach((img) => {
-            img.replaceWith(document.createTextNode(img.getAttribute("alt")?.trim() || ""));
-        });
-
-        clone.querySelectorAll("br").forEach((br) => {
-            br.replaceWith(document.createTextNode("\n"));
-        });
-
-        return clone.textContent
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean);
-    }
-
-    function textWithAlts(node) {
-        return textLinesWithAlts(node).join("\n");
-    }
-
-    function renderTableAsText(table) {
-        return $$("tr", table)
-            .map((row) =>
-                $$("th, td", row)
-                    .map((cell) => cell.textContent.trim())
-                    .filter(Boolean)
-                    .join(" | ")
-            )
-            .filter(Boolean);
-    }
-
-    function imageAlts(node) {
-        return $$("img", node)
-            .map((img) => img.getAttribute("alt")?.trim())
-            .filter(Boolean);
-    }
-
-    function formatAnswerText(text, prefix) {
-        const lines = text.split("\n").filter(Boolean);
-        if (!lines.length) return prefix;
-        const [first, ...rest] = lines;
-        return [prefix + first, ...rest.map((line) => `        ${line}`)].join("\n");
-    }
-
-    function createFunctionProxy(target, shouldBlock) {
-        return new Proxy(target || function () {}, {
-            apply(fn, thisArg, args) {
-                if (shouldBlock(args)) return;
-                return Reflect.apply(fn, thisArg, args);
-            },
-        });
-    }
-
     function definePropertyProxy(obj, prop, onSet) {
         let value = obj[prop];
         Object.defineProperty(obj, prop, {
@@ -138,14 +124,97 @@
         });
     }
 
+    function createFunctionProxy(target, shouldBlock) {
+        return new Proxy(target || function () {}, {
+            apply(fn, thisArg, args) {
+                if (shouldBlock(args)) return;
+                return Reflect.apply(fn, thisArg, args);
+            },
+        });
+    }
+
+    /**********************************************************************
+     *  TEXT EXTRACTION (FAST, NO CLONE)
+     **********************************************************************/
+    function collectTextLines(node) {
+        if (!node) return [];
+        const lines = [];
+        let current = "";
+
+        const flush = () => {
+            const trimmed = current.trim();
+            if (trimmed) lines.push(trimmed);
+            current = "";
+        };
+
+        const walker = document.createTreeWalker(
+            node,
+            NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+            {
+                acceptNode(n) {
+                    if (n.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+                    if (n.nodeType === Node.ELEMENT_NODE) return NodeFilter.FILTER_ACCEPT;
+                    return NodeFilter.FILTER_REJECT;
+                },
+            }
+        );
+
+        let currentNode = walker.currentNode;
+        while (currentNode) {
+            if (currentNode.nodeType === Node.TEXT_NODE) {
+                current += currentNode.nodeValue || "";
+            } else if (currentNode.nodeType === Node.ELEMENT_NODE) {
+                const el = currentNode;
+                if (el.tagName === "BR") {
+                    flush();
+                } else if (el.tagName === "IMG") {
+                    const alt = el.getAttribute("alt")?.trim();
+                    if (alt) current += alt;
+                }
+            }
+            currentNode = walker.nextNode();
+        }
+
+        flush();
+        return lines;
+    }
+
+    function textWithAlts(node) {
+        return collectTextLines(node).join("\n");
+    }
+
+    function imageAlts(node) {
+        return $$("img", node)
+            .map((img) => img.getAttribute("alt")?.trim())
+            .filter(Boolean);
+    }
+
+    function renderTableAsText(table) {
+        return $$("tr", table)
+            .map((row) =>
+                $$("th, td", row)
+                    .map((cell) => cell.textContent.trim())
+                    .filter(Boolean)
+                    .join(" | ")
+            )
+            .filter(Boolean);
+    }
+
+    function formatAnswerText(text, prefix) {
+        const lines = text.split("\n").filter(Boolean);
+        if (!lines.length) return prefix;
+        const [first, ...rest] = lines;
+        return [prefix + first, ...rest.map((line) => `        ${line}`)].join("\n");
+    }
+
     /**********************************************************************
      *  TRACKER LOG UI
      **********************************************************************/
     function ensureLogContainer() {
-        if (logContainer) return logContainer;
-        logContainer = document.createElement("div");
-        logContainer.id = "hp-log-container";
-        document.body.appendChild(logContainer);
+        if (state.logContainer) return state.logContainer;
+        state.logContainer = document.createElement("div");
+        state.logContainer.id = "hp-log-container";
+        document.body.appendChild(state.logContainer);
 
         const style = document.createElement("style");
         style.textContent = `
@@ -182,7 +251,7 @@
         }
         `;
         document.head.appendChild(style);
-        return logContainer;
+        return state.logContainer;
     }
 
     function pushLog(message) {
@@ -211,29 +280,6 @@
     /**********************************************************************
      *  TRACKING BLOCKER (MERGED)
      **********************************************************************/
-    const blockedDataLayerEvents = new Set([
-        "show_tour",
-        "close_tour",
-        "click_link",
-        "modal_view",
-        "alert_view",
-        "form_view",
-        "form_submit",
-        "form_field_change",
-        "form_step",
-    ]);
-
-    const blockedGaCalls = new Set(["pageview"]);
-    const blockedSnowplowCalls = new Set(["trackPageView", "trackStructEvent"]);
-
-    const sophiaBlockedMethods = [
-        "clickLinkForGA",
-        "clickModalCloseForGA",
-        "formGA",
-        "initPingator",
-        "clickToggleForGA",
-    ];
-
     function patchDataLayer(arr) {
         if (!Array.isArray(arr)) return;
         const originalPush = Array.prototype.push;
@@ -281,7 +327,7 @@
 
         window.snowplow = createFunctionProxy(window.snowplow, (args) => {
             if (blockedSnowplowCalls.has(args[0])) {
-                const detail = args[0] === "trackStructEvent" ? (args[1]?.category || args[1]) : "";
+                const detail = args[0] === "trackStructEvent" ? args[1]?.category || args[1] : "";
                 pushLog(`snowplow(): ${args[0]}${detail ? ` ${detail}` : ""}`);
                 return true;
             }
@@ -332,141 +378,52 @@
     /**********************************************************************
      *  QUESTION/ANSWER EXTRACTION
      **********************************************************************/
-    function extractQuestionData() {
-        const legacyContainer = $(".assessment-question-inner .question");
-        if (legacyContainer) {
-            const promptParts = [];
-            let pendingImages = [];
+    function resolveQuestionBlock(root) {
+        if (root?.matches?.(SELECTORS.challengeQuestion)) return root;
+        if (root?.matches?.(SELECTORS.legacyQuestion)) return root;
+        return (
+            $(SELECTORS.challengeQuestion, root || document) ||
+            $(SELECTORS.legacyQuestion, root || document)
+        );
+    }
 
-            const pushImages = () => {
-                if (!pendingImages.length) return;
-                promptParts.push(`Image Description:\n${pendingImages.join("\n")}`);
-                pendingImages = [];
-            };
-
-            const pushTable = (table) => {
-                const tableLines = renderTableAsText(table);
-                if (!tableLines.length) return;
-                pushImages();
-                promptParts.push(`Data Table:\n${tableLines.join("\n")}`);
-            };
-
-            Array.from(legacyContainer.childNodes).forEach((node) => {
-                if (node.nodeType !== Node.ELEMENT_NODE) return;
-
-                if (node.matches("p")) {
-                    pushImages();
-                    const text = textLinesWithAlts(node).join(" ");
-                    if (text) promptParts.push(text);
-                    return;
-                }
-
-                if (node.matches("table")) {
-                    pushTable(node);
-                    return;
-                }
-
-                if (node.matches("img, figure")) {
-                    const alts = imageAlts(node);
-                    if (alts.length) pendingImages.push(...alts);
-                }
-            });
-
-            pushImages();
-
-            return {
-                statement: null,
-                promptLabel: "Question, Instruction, or Fill in the Blank",
-                prompt: promptParts.join("\n\n"),
-                promptImages: [],
-            };
-        }
-
-        const block = $(".challenge-v2-question__text");
-        if (!block) return null;
-
-        const paragraphs = $$("p", block);
-        const statementLines = [];
-        const statementImages = [];
-        const promptImages = [];
-        const promptLines = [];
-
-        const lastPromptIndex = [...paragraphs]
-            .map((p, idx) => ({
-                idx,
-                lines: textLinesWithAlts(p),
-                imageOnly: textLinesWithAlts(p).every((line) => imageAlts(p).includes(line)),
-            }))
-            .filter((p) => p.lines.length && !p.imageOnly)
-            .map((p) => p.idx)
-            .pop();
-
-        if (paragraphs.length === 1) {
-            const lines = textLinesWithAlts(paragraphs[0]);
-            if (lines.length > 1) {
-                statementLines.push(...lines.slice(0, -1));
-                promptLines.push(lines.at(-1));
-            } else if (lines.length) {
-                promptLines.push(lines[0]);
+    function serializeQuestionBlock(block) {
+        const parts = [];
+        Array.from(block.childNodes).forEach((node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.nodeValue?.trim();
+                if (text) parts.push(text);
+                return;
             }
-        } else if (lastPromptIndex !== undefined) {
-            paragraphs.forEach((p, idx) => {
-                const lines = textLinesWithAlts(p);
-                if (!lines.length) return;
 
-                const alts = imageAlts(p);
-                const imageOnly = lines.every((line) => alts.includes(line));
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-                if (imageOnly) {
-                    (idx <= lastPromptIndex ? statementImages : promptImages).push(...alts);
-                    return;
-                }
-
-                if (idx < lastPromptIndex) {
-                    statementLines.push(...lines);
-                } else if (idx === lastPromptIndex) {
-                    promptLines.push(lines.join(" "));
-                }
-            });
-        }
-
-        const tables = $$("table", block);
-        if (tables.length) {
-            const tableLines = tables.flatMap((table) => renderTableAsText(table));
-            if (tableLines.length) {
-                if (statementLines.length) statementLines.push("");
-                statementLines.push("Data Table:");
-                statementLines.push(...tableLines);
+            if (node.matches("p")) {
+                const lines = collectTextLines(node);
+                if (lines.length) parts.push(...lines);
+                return;
             }
-        }
 
-        const standaloneImages = $$("img", block).filter((img) => !img.closest("p"));
-        if (standaloneImages.length && paragraphs[lastPromptIndex]) {
-            const promptNode = paragraphs[lastPromptIndex];
-            standaloneImages.forEach((img) => {
-                const alt = img.getAttribute("alt")?.trim();
-                if (!alt) return;
-                const afterPrompt =
-                    promptNode.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING;
-                (afterPrompt ? promptImages : statementImages).push(alt);
-            });
-        }
+            if (node.matches("table")) {
+                const tableLines = renderTableAsText(node);
+                if (tableLines.length) {
+                    parts.push("Data Table:");
+                    parts.push(...tableLines);
+                }
+                return;
+            }
 
-        if (statementImages.length) {
-            if (statementLines.length) statementLines.push("");
-            statementLines.push("Image Description:");
-            statementLines.push(...statementImages);
-        }
+            if (node.matches("img, figure")) {
+                const alts = imageAlts(node);
+                if (alts.length) {
+                    parts.push("Image Description:");
+                    parts.push(...alts);
+                }
+                return;
+            }
+        });
 
-        const statement = statementLines.length ? statementLines.join("\n") : null;
-        const prompt = promptLines.join(" ").trim();
-
-        return {
-            statement,
-            promptLabel: "Question, Instruction, or Fill in the Blank",
-            prompt,
-            promptImages,
-        };
+        return parts.filter(Boolean);
     }
 
     function extractAnswerText(el, index) {
@@ -476,46 +433,44 @@
         return formatAnswerText(textWithAlts(valueEl), prefix);
     }
 
-    function extractQA() {
-        const qData = extractQuestionData();
-        if (!qData) return null;
+    function extractQA(root) {
+        const block = resolveQuestionBlock(root);
+        if (!block) return null;
 
-        const legacyAnswers = $$(".assessment-question-inner .multiple-choice-answer-fields .multiple-choice-answer-field p");
-        const challengeAnswers = $$(".challenge-v2-answer__list .challenge-v2-answer__text");
+        const questionLines = serializeQuestionBlock(block);
+        if (!questionLines.length) return null;
+
+        const legacyAnswers = $$(SELECTORS.legacyAnswers, document);
+        const challengeAnswers = $$(SELECTORS.challengeAnswers, document);
         const answerEls = legacyAnswers.length ? legacyAnswers : challengeAnswers;
 
         if (!answerEls.length) return null;
 
         const answers = answerEls.map((el, i) => `- ${extractAnswerText(el, i)}`);
 
-        const parts = [];
-        if (qData.statement) parts.push(`Statement:\n${qData.statement}`);
-        parts.push(`${qData.promptLabel}:\n${qData.prompt}`);
-        if (qData.promptImages?.length) {
-            parts.push(`Image Description:\n${qData.promptImages.join("\n")}`);
-        }
-        parts.push(`Possible answers:\n${answers.join("\n")}`);
-
-        return parts.join("\n\n");
+        return `${questionLines.join("\n\n")}\n\nPossible answers:\n${answers.join("\n")}`;
     }
 
     /**********************************************************************
      *  RENDER + CLIPBOARD
      **********************************************************************/
     function renderIfChanged() {
-        const out = extractQA();
-        if (!out || out === lastOutput) return;
-        lastOutput = out;
+        const out = extractQA(state.lastRoot);
+        if (!out || out === state.lastOutput) return;
+        state.lastOutput = out;
         copyText(out)
             .then((ok) => toast(ok ? "Copied!" : "Clipboard unavailable."))
             .catch(() => toast("Copy failed."));
     }
 
     function scheduleRender() {
-        if (renderScheduled) return;
-        renderScheduled = true;
+        if (state.renderScheduled) return;
+        state.renderScheduled = true;
         requestAnimationFrame(() => {
-            renderScheduled = false;
+            state.renderScheduled = false;
+            const now = Date.now();
+            if (now - state.lastRenderAt < state.minRenderInterval) return;
+            state.lastRenderAt = now;
             renderIfChanged();
         });
     }
@@ -532,8 +487,8 @@
         }
     }
 
-    function removeBlockedScripts() {
-        $$("script[src]").forEach((s) => {
+    function removeBlockedScripts(root = document) {
+        $$("script[src]", root).forEach((s) => {
             if (isBlocked(s.src)) {
                 pushLog(s.src);
                 s.remove();
@@ -543,8 +498,8 @@
 
     function startBlocker() {
         removeBlockedScripts();
-        if (scriptObs) return;
-        scriptObs = new MutationObserver((muts) => {
+        if (state.scriptObserver) return;
+        state.scriptObserver = new MutationObserver((muts) => {
             muts.forEach((m) => {
                 m.addedNodes.forEach((n) => {
                     if (n.tagName === "SCRIPT" && n.src && isBlocked(n.src)) {
@@ -554,27 +509,30 @@
                 });
             });
         });
-        scriptObs.observe(document.documentElement, { childList: true, subtree: true });
+        state.scriptObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
 
     /**********************************************************************
      *  OBSERVERS
      **********************************************************************/
+    function findRoot() {
+        for (const sel of SELECTORS.roots) {
+            const root = $(sel);
+            if (root) return root;
+        }
+        return null;
+    }
+
     function attachRootObserver() {
-        const root =
-            $(".challenge-v2-question__text") ||
-            $(".assessment-question-inner") ||
-            $(".assessment-question-block") ||
-            $(".assessment-take__question-area");
+        const root = findRoot();
+        if (root === state.lastRoot) return;
 
-        if (root === lastRoot) return;
-
-        lastRoot = root;
-        rootObserver?.disconnect();
+        state.lastRoot = root;
+        state.rootObserver?.disconnect();
         if (!root) return;
 
-        rootObserver = new MutationObserver(() => scheduleRender());
-        rootObserver.observe(root, { childList: true, subtree: true, characterData: true });
+        state.rootObserver = new MutationObserver(() => scheduleRender());
+        state.rootObserver.observe(root, { childList: true, subtree: true, characterData: true });
 
         renderIfChanged();
     }
