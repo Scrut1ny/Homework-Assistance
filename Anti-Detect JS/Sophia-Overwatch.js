@@ -404,6 +404,16 @@
                 return;
             }
 
+            if (node.matches("ul, ol")) {
+                const items = $$("li", node)
+                    .map((li) => collectTextLines(li).join(" ").trim())
+                    .filter(Boolean);
+                if (items.length) {
+                    parts.push(...items.map((item) => `- ${item}`));
+                }
+                return;
+            }
+
             if (node.matches("table")) {
                 const tableLines = renderTableAsText(node);
                 if (tableLines.length) {
