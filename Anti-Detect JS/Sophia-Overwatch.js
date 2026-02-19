@@ -151,8 +151,8 @@
         style.textContent = `
         #hp-log-container {
             position: fixed;
-            right: 20px;
-            bottom: 20px;
+            right: 16px;
+            bottom: 16px;
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -161,28 +161,24 @@
             align-items: flex-end;
         }
         .hp-log {
-            background: rgba(0, 0, 0, 0.8);
-            color: #fff;
-            border: 1px solid #31ff5e;
+            background: #111;
+            color: #ff4d4d;
+            border: 1px solid #2a2a2a;
             padding: 6px 10px;
             border-radius: 6px;
             font-size: 12px;
             font-family: "Consolas", monospace;
-            box-shadow: 0 0 8px rgba(49, 255, 94, 0.3);
             animation: hp-log-fade 10s ease forwards;
-            transform: translateY(0);
             opacity: 1;
             white-space: nowrap;
-            width: fit-content;
-            max-width: none;
         }
-        .hp-log-domain {
+        .hp-log-blocked {
             color: #ff4d4d;
         }
         @keyframes hp-log-fade {
             0% { opacity: 1; transform: translateY(0); }
-            75% { opacity: 1; transform: translateY(-6px); }
-            100% { opacity: 0; transform: translateY(-16px); }
+            75% { opacity: 1; transform: translateY(-4px); }
+            100% { opacity: 0; transform: translateY(-10px); }
         }
         `;
         document.head.appendChild(style);
@@ -193,10 +189,19 @@
         const container = ensureLogContainer();
         const el = document.createElement("div");
         el.className = "hp-log";
-        el.innerHTML = `🛡️ <span class="hp-log-domain">${message}</span>`;
+
+        let display = String(message || "").trim();
+        if (/^(https?:)?\/\//i.test(display)) {
+            try {
+                const url = new URL(display, location.href);
+                display = url.hostname;
+            } catch {}
+        }
+
+        el.innerHTML = `🛡️ <span class="hp-log-domain">${display}</span>`;
         container.appendChild(el);
 
-        while (container.children.length > 4) {
+        while (container.children.length > 10) {
             container.removeChild(container.firstChild);
         }
 
