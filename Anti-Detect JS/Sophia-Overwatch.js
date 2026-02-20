@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      22.10
+// @version      23.6
 // @description  Copies Q&A, blocks tracking, event-driven cookie destruction
 // @match        https://*.sophia.org/*
 // @run-at       document-start
@@ -12,336 +12,343 @@
 (() => {
     "use strict";
 
+    const w = unsafeWindow;
+
     // --- CONFIGURATION ---
-    const BLOCKED_HOSTS = [
+    const BLOCKED_HOSTS = new Set([
         "cdn.optimizely.com", "static.cloudflareinsights.com", "stat.sophia.org",
         "stats.sophia.org", "dpm.demdex.net", "js.hs-scripts.com",
         "analytics.sophia.org", "assets.adobedtm.com"
-    ];
-
-    const BLOCKED_EVENTS = new Set([
-        "show_tour", "close_tour", "click_link", "modal_view", "alert_view",
-        "form_view", "form_submit", "form_field_change", "form_step"
     ]);
 
-    const BLOCKED_GA_ACTIONS = new Set(["pageview"]);
-    const SOPHIA_METHODS = ["clickLinkForGA", "clickModalCloseForGA", "formGA", "initPingator", "clickToggleForGA"];
-
-    const BLOCKED_COOKIES = [
-        /^sophia_st$/, // Sophia Session Timer
-        /^AMCV/,       // Adobe Marketing Cloud
-        /^AMCVS/,      // Adobe Analytics
-        /^_sp_/        // Snowplow Analytics
-    ];
-
-    let logContainer = null;
-    let lastCopiedHash = "";
-    let lastRawText = "";
-    let extractTimeout = null;
-
-    // --- UI ---
-    const injectStyles = () => {
-        if (document.getElementById('hp-styles')) return;
-        const style = document.createElement("style");
-        style.id = 'hp-styles';
-        style.textContent = `
-        #hp-log-container {
-        position: fixed; right: 16px; bottom: 16px;
-        display: flex; flex-direction: column; gap: 6px;
-        z-index: 2147483647; pointer-events: none; align-items: flex-end;
+    const TRACKING_CONFIG = {
+        push: {
+            dataLayer: {
+                trigger: "event",
+                block: new Set([
+                    "modal_view", "modal_close", "alert_view", "click_link", "click_toggle",
+                    "form_view", "form_start", "form_submit", "form_field_change", "form_progress",
+                    "login", "student_expired", "show_tour", "close_tour"
+                ])
+            },
+            optimizely: {
+                trigger: "type",
+                block: new Set(["event", "user"])
+            }
+        },
+        call: {
+            ga: new Set(["pageview", "send", "create", "require"]),
+            snowplow: new Set(["trackPageView", "trackStructEvent", "newTracker"])
         }
-        .hp-log {
-            background: #1a1a1a; color: #ff5555; border: 1px solid #333;
-            padding: 6px 10px; border-radius: 4px; font-size: 13px;
-            font-family: Consolas, monospace; font-weight: bold;
-            animation: hp-fade 6s ease forwards; opacity: 1;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: auto;
-            min-width: 150px; display: flex; align-items: center; gap: 8px;
-        }
-        .hp-toast {
-            position: fixed; bottom: 16px; left: 16px;
-            padding: 8px 12px; background: #1a1a1a; color: #4dff88;
-            border: 1px solid #333; border-left: 3px solid #4dff88;
-            border-radius: 4px; font-size: 20px; font-family: Consolas, monospace;
-            z-index: 2147483647; font-weight: bold; text-align: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            animation: hp-slide-in-left 0.3s ease forwards;
-        }
-        @keyframes hp-fade {
-            0% { opacity: 0; transform: translateY(10px); }
-            5% { opacity: 1; transform: translateY(0); }
-            85% { opacity: 1; transform: translateY(-5px); }
-            100% { opacity: 0; transform: translateY(-20px); }
-        }
-        @keyframes hp-slide-in-left {
-            0% { opacity: 0; transform: translateX(-20px); }
-            100% { opacity: 1; transform: translateX(0); }
-        }
-        `;
-        (document.head || document.documentElement).appendChild(style);
     };
 
-    const getLogger = () => {
-        if (logContainer && document.contains(logContainer)) return logContainer;
-        logContainer = document.createElement("div");
-        logContainer.id = "hp-log-container";
-        (document.body || document.documentElement).appendChild(logContainer);
-        return logContainer;
+    const BLOCKED_COOKIE_RE = /^(sophia_st|AMCVS?|_sp_)/;
+
+    const Q_SELECTOR = ".challenge-v2-question__text, .question-body .question, .question-body";
+    const A_SELECTOR = ".challenge-v2-answer__list, .multiple-choice-answer-fields";
+    const Q_STRIP = "ul.multiple-choice-answer-fields, ul.answer-fields, .challenge-v2-answer__list, #resubmit-message-place, #helpful-tutorials-message-place";
+    const EXTRACT_TAGS = new Set(["DIV", "UL", "LI"]);
+
+    let logContainer = null;
+    let lastCopiedHash = 0;
+    let lastRawText = "";
+    let extractTimeout = null;
+    let toastTimer = null;
+
+    // --- UI ---
+    const ROOT = document.documentElement;
+
+    const injectStyles = () => {
+        if (document.getElementById("hp-styles")) return;
+        const style = document.createElement("style");
+        style.id = "hp-styles";
+        style.textContent = `
+            #hp-log-container {
+                position: fixed; right: 16px; bottom: 16px;
+                display: flex; flex-direction: column; gap: 6px;
+                z-index: 2147483647; pointer-events: none; align-items: flex-end;
+            }
+            .hp-log {
+                background: #1a1a1a; color: #ff5555; border: 1px solid #333;
+                padding: 6px 10px; border-radius: 4px; font-size: 13px;
+                font-family: Consolas, monospace; font-weight: bold;
+                animation: hp-fade 6s ease forwards; opacity: 1;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: auto;
+                min-width: 150px; display: flex; align-items: center; gap: 8px;
+            }
+            .hp-toast {
+                position: fixed; bottom: 16px; left: 16px;
+                padding: 8px 12px; background: #1a1a1a; color: #4dff88;
+                border: 1px solid #333; border-left: 3px solid #4dff88;
+                border-radius: 4px; font-size: 20px; font-family: Consolas, monospace;
+                z-index: 2147483647; font-weight: bold; text-align: center;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                animation: hp-slide-in-left 0.3s ease forwards;
+            }
+            @keyframes hp-fade {
+                0% { opacity: 0; transform: translateY(10px); }
+                5% { opacity: 1; transform: translateY(0); }
+                85% { opacity: 1; transform: translateY(-5px); }
+                100% { opacity: 0; transform: translateY(-20px); }
+            }
+            @keyframes hp-slide-in-left {
+                0% { opacity: 0; transform: translateX(-20px); }
+                100% { opacity: 1; transform: translateX(0); }
+            }
+        `;
+        (document.head || ROOT).appendChild(style);
     };
 
     const pushLog = (rawMsg) => {
-        const container = getLogger();
+        if (!logContainer) {
+            logContainer = document.createElement("div");
+            logContainer.id = "hp-log-container";
+            (document.body || ROOT).appendChild(logContainer);
+        }
         const el = document.createElement("div");
         el.className = "hp-log";
-
-        let text = String(rawMsg);
-
-        if (text.includes("://")) {
-            const parts = text.split('/');
-            if (parts.length > 2) text = parts[2];
-        }
-
-        el.textContent = `🛡️ ${text}`;
-        container.appendChild(el);
-
-        if (container.childNodes.length > 8) {
-            container.removeChild(container.firstChild);
-        }
-
-        setTimeout(() => { if(el.parentNode) el.remove(); }, 6200);
+        const text = String(rawMsg);
+        el.textContent = `🛡️ ${text.includes("://") ? text.split("/")[2] : text}`;
+        logContainer.appendChild(el);
+        if (logContainer.childNodes.length > 8) logContainer.firstChild.remove();
+        el.addEventListener("animationend", () => el.remove(), { once: true });
     };
 
     const toast = (msg) => {
-        const existing = document.querySelector('.hp-toast');
+        const existing = document.querySelector(".hp-toast");
         if (existing) existing.remove();
-
+        clearTimeout(toastTimer);
         const el = document.createElement("div");
         el.className = "hp-toast";
         el.textContent = msg;
-        (document.body || document.documentElement).appendChild(el);
-        setTimeout(() => { if(el.parentNode) el.remove(); }, 2500);
+        (document.body || ROOT).appendChild(el);
+        toastTimer = setTimeout(() => el.remove(), 2500);
     };
 
-    // --- COOKIES ---
-    const activateCookieDefense = async () => {
-        if (!window.cookieStore) return;
-
-        const kill = (name) => {
-            window.cookieStore.delete(name);
-            pushLog(`Cookie: ${name}`);
-        };
-
-        const all = await window.cookieStore.getAll();
-        all.filter(c => BLOCKED_COOKIES.some(r => r.test(c.name))).forEach(c => kill(c.name));
-
-        window.cookieStore.addEventListener('change', (event) => {
-            event.changed.forEach(c => {
-                if (BLOCKED_COOKIES.some(r => r.test(c.name))) {
-                    kill(c.name);
-                }
-            });
-        });
-    };
-
-    // --- BLOCKING ---
+    // --- BLOCKING HELPERS ---
     const isBlocked = (urlStr) => {
         if (!urlStr) return false;
-        return BLOCKED_HOSTS.some(host => urlStr.includes(host));
+        try {
+            return BLOCKED_HOSTS.has(new URL(urlStr, location.origin).hostname);
+        } catch {
+            return false;
+        }
     };
 
-    const patchDataLayer = () => {
-        window.dataLayer = window.dataLayer || [];
-        const originalPush = Array.prototype.push;
+    // --- COOKIE DEFENSE ---
+    const activateCookieDefense = async () => {
+        const store = w.cookieStore;
+        if (!store) return;
+        const kill = ({ name }) => { store.delete(name); pushLog(`Cookie: ${name}`); };
+        (await store.getAll()).forEach(c => BLOCKED_COOKIE_RE.test(c.name) && kill(c));
+        store.addEventListener("change", ({ changed }) =>
+            changed.forEach(c => BLOCKED_COOKIE_RE.test(c.name) && kill(c))
+        );
+    };
 
-        Object.defineProperty(window.dataLayer, 'push', {
-            configurable: true,
-            writable: true,
-            value: function(...args) {
-                const allowed = [];
-                for (const arg of args) {
-                    if (arg && typeof arg === "object" && arg.event && BLOCKED_EVENTS.has(arg.event)) {
-                        pushLog(arg.event);
-                    } else {
-                        allowed.push(arg);
-                    }
+    // --- NETWORK INTERCEPTION ---
+    const patchNetwork = () => {
+        const origFetch = w.fetch;
+        w.fetch = function (input) {
+            const url = (input instanceof Request) ? input.url : String(input);
+            if (isBlocked(url)) {
+                pushLog(url);
+                return Promise.resolve(new Response("", { status: 200 }));
+            }
+            return origFetch.apply(this, arguments);
+        };
+
+        const XHR = w.XMLHttpRequest.prototype;
+        const origOpen = XHR.open;
+        const origSend = XHR.send;
+        XHR.open = function (method, url) {
+            this._blocked = isBlocked(url);
+            if (this._blocked) pushLog(url);
+            return origOpen.apply(this, arguments);
+        };
+        XHR.send = function () {
+            if (this._blocked) return;
+            return origSend.apply(this, arguments);
+        };
+
+        const origBeacon = w.navigator.sendBeacon;
+        if (origBeacon) {
+            w.navigator.sendBeacon = function (url) {
+                if (isBlocked(url)) {
+                    pushLog(url);
+                    return true;
                 }
-                return allowed.length ? originalPush.apply(this, allowed) : this.length;
+                return origBeacon.apply(this, arguments);
+            };
+        }
+    };
+
+    // --- UNIVERSAL PROXY INTERCEPTION ---
+    const SHIMMED = Symbol("shimmed");
+
+    const createShim = (target, name, type, rules) => {
+        if (target?.[SHIMMED]) return target;
+
+        const isPush = type === "push";
+
+        const pushTrap = isPush && {
+            apply(pushFn, thisArg, args) {
+                const allowed = args.filter(arg => {
+                    if (arg && typeof arg === "object") {
+                        const val = arg[rules.trigger];
+                        if (val && rules.block.has(val)) {
+                            pushLog(`${name}: ${val}`);
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+                return Reflect.apply(pushFn, thisArg, allowed);
+            }
+        };
+
+        return new Proxy(target, {
+            get(target, prop, receiver) {
+                if (prop === SHIMMED) return true;
+                if (isPush && prop === "push") return new Proxy(target.push, pushTrap);
+                return Reflect.get(target, prop, receiver);
+            },
+            apply(target, thisArg, args) {
+                if (!isPush && rules.has(args[0])) {
+                    pushLog(`${name}: ${args[0]}`);
+                    return;
+                }
+                return Reflect.apply(target, thisArg, args);
             }
         });
     };
 
-    const patchGlobals = () => {
-        if (typeof SOPHIA !== "undefined") {
-            SOPHIA_METHODS.forEach(m => {
-                if (SOPHIA[m] && !SOPHIA[m]._patched) {
-                    SOPHIA[m] = () => pushLog(`SOPHIA.${m}`);
-                    SOPHIA[m]._patched = true;
-                }
+    const installTrap = (key, type, rules) => {
+        const fallback = type === "push" ? [] : function () {
+            (w[key].q = w[key].q || []).push(arguments);
+        };
+        let shim = createShim(w[key] || fallback, key, type, rules);
+
+        try {
+            Object.defineProperty(w, key, {
+                configurable: true,
+                get: () => shim,
+                set: (val) => { shim = createShim(val, key, type, rules); }
             });
+        } catch (e) {
+            console.warn(`Failed to hook ${key}`, e);
         }
-        if (window.ga && !window.ga._patched) {
-            const oldGa = window.ga;
-            window.ga = function(...args) {
-                if (args[0] === 'send' && BLOCKED_GA_ACTIONS.has(args[1])) {
-                    pushLog(args[1]);
-                    return;
-                }
-                return oldGa.apply(this, args);
-            };
-            window.ga._patched = true;
+    };
+
+    const patchTracking = () => {
+        for (const [type, entries] of Object.entries(TRACKING_CONFIG)) {
+            for (const [key, rules] of Object.entries(entries)) {
+                installTrap(key, type, rules);
+            }
         }
     };
 
     // --- EXTRACTION ---
     const simpleHash = (str) => {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash) + str.charCodeAt(i);
-            hash |= 0;
+        let h = 0;
+        for (let i = 0, len = str.length; i < len; i++) {
+            h = Math.imul(31, h) + str.charCodeAt(i) | 0;
         }
-        return hash;
+        return h;
     };
 
-    const getCleanTextFromNode = (node) => {
+    const getCleanText = (node) => {
         if (!node) return "";
         const clone = node.cloneNode(true);
+        const text = (str) => document.createTextNode(str);
 
-        const images = clone.querySelectorAll('img');
-        images.forEach(img => {
-            if (img.alt && img.alt.trim()) {
-                const textNode = document.createTextNode(`[Image: ${img.alt.trim()}] `);
-                img.parentNode.replaceChild(textNode, img);
-            }
-        });
+        for (const el of clone.querySelectorAll(Q_STRIP)) el.remove();
 
-        const tables = clone.querySelectorAll('table');
-        tables.forEach(table => {
-            let tableText = "\n";
-            const rows = table.querySelectorAll('tr');
+        for (const img of clone.querySelectorAll("img")) {
+            if (img.alt) img.replaceWith(text(`[Image: ${img.alt.trim()}] `));
+        }
 
-            rows.forEach((row, rowIndex) => {
-                const cells = row.querySelectorAll('td, th');
-                const rowText = Array.from(cells)
-                .map(cell => cell.innerText.trim().replace(/\n/g, ' '))
-                .join(' | ');
-
-                tableText += `| ${rowText} |\n`;
-
-                if (rowIndex === 0) {
-                    const divider = Array.from(cells).map(() => '---').join(' | ');
-                    tableText += `| ${divider} |\n`;
-                }
+        for (const table of clone.querySelectorAll("table")) {
+            const rows = table.querySelectorAll("tr");
+            let txt = "\n";
+            rows.forEach((row, i) => {
+                const cells = [...row.querySelectorAll("td, th")].map(c => c.innerText.trim().replace(/\n/g, " "));
+                txt += `| ${cells.join(" | ")} |\n`;
+                if (i === 0) txt += `| ${cells.map(() => "---").join(" | ")} |\n`;
             });
+            table.replaceWith(Object.assign(document.createElement("div"), { innerText: txt + "\n" }));
+        }
 
-            tableText += "\n";
-            const pre = document.createElement('div');
-            pre.innerText = tableText;
-            table.parentNode.replaceChild(pre, table);
-        });
+        for (const p of clone.querySelectorAll("p")) p.append("\n");
+        for (const br of clone.querySelectorAll("br")) br.replaceWith("\n");
 
-        const paragraphs = clone.querySelectorAll('p');
-        paragraphs.forEach(p => p.appendChild(document.createTextNode('\n')));
-
-        const brs = clone.querySelectorAll('br');
-        brs.forEach(br => br.parentNode.replaceChild(document.createTextNode('\n'), br));
-
-        return clone.innerText.trim().replace(/\n\s*\n/g, '\n\n');
+        return clone.innerText.trim().replace(/\n\s*\n/g, "\n\n");
     };
 
     const extractAndCopy = () => {
-        const qContainer = document.querySelector('.challenge-v2-question__text') ||
-        document.querySelector('.question-body .question') ||
-        document.querySelector('.question-body');
-
-        if (!qContainer) return;
+        const qContainer = document.querySelector(Q_SELECTOR);
+        const aList = document.querySelector(A_SELECTOR);
+        if (!qContainer || !aList) return;
 
         const currentRaw = qContainer.innerText;
+        if (currentRaw === lastRawText) return;
 
-        const aList = document.querySelector('.challenge-v2-answer__list') ||
-                      document.querySelector('.multiple-choice-answer-fields');
-
-        if (currentRaw === lastRawText && aList) return;
-        if (!aList) return;
-
-        let finalQ = getCleanTextFromNode(qContainer);
-
-        const isMilestone = aList.classList.contains('multiple-choice-answer-fields');
-        const answerItems = Array.from(aList.querySelectorAll('li'));
-
-        const finalAnswers = answerItems.map((li, idx) => {
-            if (li.classList.contains('rationale-item')) return null;
-
-            let letter, text;
-
-            if (isMilestone) {
-                letter = String.fromCharCode(65 + idx) + ".)";
-                const textEl = li.querySelector('label div');
-                text = textEl ? getCleanTextFromNode(textEl) : "";
-            } else {
-                const letterEl = li.querySelector('.letter');
-                const textEl = li.querySelector('.challenge-v2-answer__text div') ||
-                               li.querySelector('.challenge-v2-answer__text');
-
-                if (!textEl) return null;
-                letter = letterEl ? letterEl.innerText.trim() : "-";
-                text = getCleanTextFromNode(textEl);
-            }
-
-            return `${letter} ${text}`;
-        }).filter(Boolean).join('\n');
+        const finalQ = getCleanText(qContainer);
+        const finalAnswers = [...aList.querySelectorAll("li")]
+            .filter(li => !li.classList.contains("rationale-item"))
+            .map((li, idx) => {
+                const letter = li.querySelector(".letter")?.innerText.trim()
+                    || String.fromCharCode(65 + idx) + ".)";
+                const textEl = li.querySelector(".challenge-v2-answer__text div, .challenge-v2-answer__text, label div");
+                return textEl ? `${letter} ${getCleanText(textEl)}` : null;
+            })
+            .filter(Boolean)
+            .join("\n");
 
         const fullText = `QUESTION:\n${finalQ}\n\nOPTIONS:\n${finalAnswers}`;
-
         const contentHash = simpleHash(fullText);
-        if (contentHash === lastCopiedHash) return;
 
-        lastCopiedHash = contentHash;
-        lastRawText = currentRaw;
-
-        if (typeof GM_setClipboard === "function") {
+        if (contentHash !== lastCopiedHash) {
+            lastCopiedHash = contentHash;
+            lastRawText = currentRaw;
             GM_setClipboard(fullText);
             toast("📋");
-        } else {
-            navigator.clipboard.writeText(fullText).then(() => toast("📋"));
         }
     };
 
     // --- INIT ---
-    const init = () => {
-        injectStyles();
-        patchDataLayer();
-        activateCookieDefense();
-        patchGlobals();
-
-        setInterval(extractAndCopy, 1000);
-
-        new MutationObserver((mutations) => {
-            let needsExtract = false;
-
-            for (const m of mutations) {
-                for (const n of m.addedNodes) {
-                    if (n.tagName === "SCRIPT" && n.src && isBlocked(n.src)) {
-                        n.remove();
-                        pushLog(n.src);
-                    }
-                    if (!needsExtract && (n.tagName === "DIV" || n.tagName === "UL" || n.tagName === "LI")) {
-                        needsExtract = true;
-                    }
-                }
-            }
-
-            if (needsExtract) {
-                clearTimeout(extractTimeout);
-                extractTimeout = setTimeout(extractAndCopy, 100);
-            }
-
-        }).observe(document.documentElement, { childList: true, subtree: true });
+    const scheduleExtract = () => {
+        clearTimeout(extractTimeout);
+        extractTimeout = setTimeout(extractAndCopy, 100);
     };
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", init);
-    } else {
-        init();
-    }
+    const observer = new MutationObserver((mutations) => {
+        let needsExtract = false;
+        for (const { addedNodes } of mutations) {
+            for (const n of addedNodes) {
+                if (n.nodeType !== 1) continue;
+                if (n.tagName === "SCRIPT" && n.src && isBlocked(n.src)) {
+                    n.remove();
+                    pushLog(n.src);
+                }
+                if (!needsExtract && EXTRACT_TAGS.has(n.tagName)) {
+                    needsExtract = true;
+                }
+            }
+        }
+        if (needsExtract) scheduleExtract();
+    });
+
+    const init = () => {
+        injectStyles();
+        patchTracking();
+        patchNetwork();
+        activateCookieDefense();
+        setInterval(extractAndCopy, 1000);
+        observer.observe(ROOT, { childList: true, subtree: true });
+    };
+
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+    else init();
 
 })();
