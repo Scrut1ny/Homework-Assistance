@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      22.5
+// @version      22.6
 // @description  Copies Q&A, blocks tracking, event-driven cookie destruction
 // @match        https://*.sophia.org/*
 // @run-at       document-start
@@ -252,9 +252,10 @@
         if (!qContainer) return;
 
         const currentRaw = qContainer.innerText;
-        if (currentRaw === lastRawText) return;
-
         const aList = document.querySelector('.challenge-v2-answer__list');
+
+        if (currentRaw === lastRawText && aList) return;
+
         if (!aList) return;
 
         let finalQ = getCleanTextFromNode(qContainer);
