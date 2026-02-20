@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      22.6
+// @version      22.10
 // @description  Copies Q&A, blocks tracking, event-driven cookie destruction
 // @match        https://*.sophia.org/*
 // @run-at       document-start
@@ -239,6 +239,9 @@
             table.parentNode.replaceChild(pre, table);
         });
 
+        const paragraphs = clone.querySelectorAll('p');
+        paragraphs.forEach(p => p.appendChild(document.createTextNode('\n')));
+
         const brs = clone.querySelectorAll('br');
         brs.forEach(br => br.parentNode.replaceChild(document.createTextNode('\n'), br));
 
@@ -247,31 +250,42 @@
 
     const extractAndCopy = () => {
         const qContainer = document.querySelector('.challenge-v2-question__text') ||
+        document.querySelector('.question-body .question') ||
         document.querySelector('.question-body');
 
         if (!qContainer) return;
 
         const currentRaw = qContainer.innerText;
-        const aList = document.querySelector('.challenge-v2-answer__list');
+
+        const aList = document.querySelector('.challenge-v2-answer__list') ||
+                      document.querySelector('.multiple-choice-answer-fields');
 
         if (currentRaw === lastRawText && aList) return;
-
         if (!aList) return;
 
         let finalQ = getCleanTextFromNode(qContainer);
 
+        const isMilestone = aList.classList.contains('multiple-choice-answer-fields');
         const answerItems = Array.from(aList.querySelectorAll('li'));
-        const finalAnswers = answerItems.map(li => {
+
+        const finalAnswers = answerItems.map((li, idx) => {
             if (li.classList.contains('rationale-item')) return null;
 
-            const letterEl = li.querySelector('.letter');
-            const textEl = li.querySelector('.challenge-v2-answer__text div') ||
-            li.querySelector('.challenge-v2-answer__text');
+            let letter, text;
 
-            if (!textEl) return null;
+            if (isMilestone) {
+                letter = String.fromCharCode(65 + idx) + ".)";
+                const textEl = li.querySelector('label div');
+                text = textEl ? getCleanTextFromNode(textEl) : "";
+            } else {
+                const letterEl = li.querySelector('.letter');
+                const textEl = li.querySelector('.challenge-v2-answer__text div') ||
+                               li.querySelector('.challenge-v2-answer__text');
 
-            const letter = letterEl ? letterEl.innerText.trim() : "-";
-            const text = getCleanTextFromNode(textEl);
+                if (!textEl) return null;
+                letter = letterEl ? letterEl.innerText.trim() : "-";
+                text = getCleanTextFromNode(textEl);
+            }
 
             return `${letter} ${text}`;
         }).filter(Boolean).join('\n');
