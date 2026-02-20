@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      22.0
+// @version      22.5
 // @description  Copies Q&A, blocks tracking, event-driven cookie destruction
 // @match        https://*.sophia.org/*
 // @run-at       document-start
@@ -13,21 +13,21 @@
     "use strict";
 
     // --- CONFIGURATION ---
-    const blockedHosts = [
+    const BLOCKED_HOSTS = [
         "cdn.optimizely.com", "static.cloudflareinsights.com", "stat.sophia.org",
         "stats.sophia.org", "dpm.demdex.net", "js.hs-scripts.com",
         "analytics.sophia.org", "assets.adobedtm.com"
     ];
 
-    const blockedEvents = new Set([
+    const BLOCKED_EVENTS = new Set([
         "show_tour", "close_tour", "click_link", "modal_view", "alert_view",
         "form_view", "form_submit", "form_field_change", "form_step"
     ]);
 
-    const blockedGa = new Set(["pageview"]);
-    const sophiaMethods = ["clickLinkForGA", "clickModalCloseForGA", "formGA", "initPingator", "clickToggleForGA"];
+    const BLOCKED_GA_ACTIONS = new Set(["pageview"]);
+    const SOPHIA_METHODS = ["clickLinkForGA", "clickModalCloseForGA", "formGA", "initPingator", "clickToggleForGA"];
 
-    const blockedCookies = [
+    const BLOCKED_COOKIES = [
         /^sophia_st$/, // Sophia Session Timer
         /^AMCV/,       // Adobe Marketing Cloud
         /^AMCVS/,      // Adobe Analytics
@@ -36,6 +36,8 @@
 
     let logContainer = null;
     let lastCopiedHash = "";
+    let lastRawText = "";
+    let extractTimeout = null;
 
     // --- UI ---
     const injectStyles = () => {
@@ -43,38 +45,38 @@
         const style = document.createElement("style");
         style.id = 'hp-styles';
         style.textContent = `
-            #hp-log-container {
-                position: fixed; right: 16px; bottom: 16px;
-                display: flex; flex-direction: column; gap: 6px;
-                z-index: 2147483647; pointer-events: none; align-items: flex-end;
-            }
-            .hp-log {
-                background: #1a1a1a; color: #ff5555; border: 1px solid #333;
-                padding: 6px 10px; border-radius: 4px; font-size: 13px;
-                font-family: Consolas, monospace; font-weight: bold;
-                animation: hp-fade 6s ease forwards; opacity: 1;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: auto;
-                min-width: 150px; display: flex; align-items: center; gap: 8px;
-            }
-            .hp-toast {
-                position: fixed; bottom: 16px; left: 16px;
-                padding: 8px 12px; background: #1a1a1a; color: #4dff88;
-                border: 1px solid #333; border-left: 3px solid #4dff88;
-                border-radius: 4px; font-size: 20px; font-family: Consolas, monospace;
-                z-index: 2147483647; font-weight: bold; text-align: center;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-                animation: hp-slide-in-left 0.3s ease forwards;
-            }
-            @keyframes hp-fade {
-                0% { opacity: 0; transform: translateY(10px); }
-                5% { opacity: 1; transform: translateY(0); }
-                85% { opacity: 1; transform: translateY(-5px); }
-                100% { opacity: 0; transform: translateY(-20px); }
-            }
-            @keyframes hp-slide-in-left {
-                0% { opacity: 0; transform: translateX(-20px); }
-                100% { opacity: 1; transform: translateX(0); }
-            }
+        #hp-log-container {
+        position: fixed; right: 16px; bottom: 16px;
+        display: flex; flex-direction: column; gap: 6px;
+        z-index: 2147483647; pointer-events: none; align-items: flex-end;
+        }
+        .hp-log {
+            background: #1a1a1a; color: #ff5555; border: 1px solid #333;
+            padding: 6px 10px; border-radius: 4px; font-size: 13px;
+            font-family: Consolas, monospace; font-weight: bold;
+            animation: hp-fade 6s ease forwards; opacity: 1;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: auto;
+            min-width: 150px; display: flex; align-items: center; gap: 8px;
+        }
+        .hp-toast {
+            position: fixed; bottom: 16px; left: 16px;
+            padding: 8px 12px; background: #1a1a1a; color: #4dff88;
+            border: 1px solid #333; border-left: 3px solid #4dff88;
+            border-radius: 4px; font-size: 20px; font-family: Consolas, monospace;
+            z-index: 2147483647; font-weight: bold; text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            animation: hp-slide-in-left 0.3s ease forwards;
+        }
+        @keyframes hp-fade {
+            0% { opacity: 0; transform: translateY(10px); }
+            5% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(-5px); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+        @keyframes hp-slide-in-left {
+            0% { opacity: 0; transform: translateX(-20px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
         `;
         (document.head || document.documentElement).appendChild(style);
     };
@@ -92,21 +94,21 @@
         const el = document.createElement("div");
         el.className = "hp-log";
 
-        let displayText = String(rawMsg);
-        if (displayText.includes("http")) {
-            try {
-                const urlMatch = displayText.match(/https?:\/\/[^ "']+/);
-                if (urlMatch) {
-                    const urlObj = new URL(urlMatch[0]);
-                    displayText = urlObj.hostname;
-                }
-            } catch (e) {}
+        let text = String(rawMsg);
+
+        if (text.includes("://")) {
+            const parts = text.split('/');
+            if (parts.length > 2) text = parts[2];
         }
 
-        el.textContent = `🛡️ ${displayText}`;
+        el.textContent = `🛡️ ${text}`;
         container.appendChild(el);
-        if (container.childElementCount > 8) container.firstElementChild.remove();
-        setTimeout(() => el.remove(), 6200);
+
+        if (container.childNodes.length > 8) {
+            container.removeChild(container.firstChild);
+        }
+
+        setTimeout(() => { if(el.parentNode) el.remove(); }, 6200);
     };
 
     const toast = (msg) => {
@@ -117,7 +119,7 @@
         el.className = "hp-toast";
         el.textContent = msg;
         (document.body || document.documentElement).appendChild(el);
-        setTimeout(() => el.remove(), 2500);
+        setTimeout(() => { if(el.parentNode) el.remove(); }, 2500);
     };
 
     // --- COOKIES ---
@@ -130,11 +132,11 @@
         };
 
         const all = await window.cookieStore.getAll();
-        all.filter(c => blockedCookies.some(r => r.test(c.name))).forEach(c => kill(c.name));
+        all.filter(c => BLOCKED_COOKIES.some(r => r.test(c.name))).forEach(c => kill(c.name));
 
         window.cookieStore.addEventListener('change', (event) => {
             event.changed.forEach(c => {
-                if (blockedCookies.some(r => r.test(c.name))) {
+                if (BLOCKED_COOKIES.some(r => r.test(c.name))) {
                     kill(c.name);
                 }
             });
@@ -143,29 +145,51 @@
 
     // --- BLOCKING ---
     const isBlocked = (urlStr) => {
-        try {
-            const h = new URL(urlStr, location.href).hostname;
-            return blockedHosts.some(blocked => h === blocked || h.endsWith('.' + blocked));
-        } catch {
-            return false;
-        }
+        if (!urlStr) return false;
+        return BLOCKED_HOSTS.some(host => urlStr.includes(host));
     };
 
     const patchDataLayer = () => {
         window.dataLayer = window.dataLayer || [];
         const originalPush = Array.prototype.push;
-        const safePush = function(...args) {
-            const allowed = [];
-            for (const arg of args) {
-                if (arg && typeof arg === "object" && arg.event && blockedEvents.has(arg.event)) {
-                    pushLog(arg.event);
-                } else {
-                    allowed.push(arg);
+
+        Object.defineProperty(window.dataLayer, 'push', {
+            configurable: true,
+            writable: true,
+            value: function(...args) {
+                const allowed = [];
+                for (const arg of args) {
+                    if (arg && typeof arg === "object" && arg.event && BLOCKED_EVENTS.has(arg.event)) {
+                        pushLog(arg.event);
+                    } else {
+                        allowed.push(arg);
+                    }
                 }
+                return allowed.length ? originalPush.apply(this, allowed) : this.length;
             }
-            return allowed.length ? originalPush.apply(this, allowed) : this.length;
-        };
-        window.dataLayer.push = safePush;
+        });
+    };
+
+    const patchGlobals = () => {
+        if (typeof SOPHIA !== "undefined") {
+            SOPHIA_METHODS.forEach(m => {
+                if (SOPHIA[m] && !SOPHIA[m]._patched) {
+                    SOPHIA[m] = () => pushLog(`SOPHIA.${m}`);
+                    SOPHIA[m]._patched = true;
+                }
+            });
+        }
+        if (window.ga && !window.ga._patched) {
+            const oldGa = window.ga;
+            window.ga = function(...args) {
+                if (args[0] === 'send' && BLOCKED_GA_ACTIONS.has(args[1])) {
+                    pushLog(args[1]);
+                    return;
+                }
+                return oldGa.apply(this, args);
+            };
+            window.ga._patched = true;
+        }
     };
 
     // --- EXTRACTION ---
@@ -198,8 +222,8 @@
             rows.forEach((row, rowIndex) => {
                 const cells = row.querySelectorAll('td, th');
                 const rowText = Array.from(cells)
-                    .map(cell => cell.innerText.trim().replace(/\n/g, ' '))
-                    .join(' | ');
+                .map(cell => cell.innerText.trim().replace(/\n/g, ' '))
+                .join(' | ');
 
                 tableText += `| ${rowText} |\n`;
 
@@ -223,12 +247,14 @@
 
     const extractAndCopy = () => {
         const qContainer = document.querySelector('.challenge-v2-question__text') ||
-                           document.querySelector('.question-body');
+        document.querySelector('.question-body');
 
         if (!qContainer) return;
 
-        const aList = document.querySelector('.challenge-v2-answer__list');
+        const currentRaw = qContainer.innerText;
+        if (currentRaw === lastRawText) return;
 
+        const aList = document.querySelector('.challenge-v2-answer__list');
         if (!aList) return;
 
         let finalQ = getCleanTextFromNode(qContainer);
@@ -239,7 +265,7 @@
 
             const letterEl = li.querySelector('.letter');
             const textEl = li.querySelector('.challenge-v2-answer__text div') ||
-                           li.querySelector('.challenge-v2-answer__text');
+            li.querySelector('.challenge-v2-answer__text');
 
             if (!textEl) return null;
 
@@ -255,6 +281,7 @@
         if (contentHash === lastCopiedHash) return;
 
         lastCopiedHash = contentHash;
+        lastRawText = currentRaw;
 
         if (typeof GM_setClipboard === "function") {
             GM_setClipboard(fullText);
@@ -269,46 +296,31 @@
         injectStyles();
         patchDataLayer();
         activateCookieDefense();
+        patchGlobals();
 
         setInterval(extractAndCopy, 1000);
-        setTimeout(extractAndCopy, 500);
 
         new MutationObserver((mutations) => {
+            let needsExtract = false;
+
             for (const m of mutations) {
                 for (const n of m.addedNodes) {
                     if (n.tagName === "SCRIPT" && n.src && isBlocked(n.src)) {
                         n.remove();
                         pushLog(n.src);
                     }
+                    if (!needsExtract && (n.tagName === "DIV" || n.tagName === "UL" || n.tagName === "LI")) {
+                        needsExtract = true;
+                    }
                 }
             }
-        }).observe(document.documentElement, { childList: true, subtree: true });
 
-        const cleanInterval = setInterval(() => {
-            document.querySelectorAll('script[src]').forEach(s => {
-                if (isBlocked(s.src)) { s.remove(); pushLog(s.src); }
-            });
-            if (typeof SOPHIA !== "undefined") {
-                sophiaMethods.forEach(m => {
-                    if (SOPHIA[m] && !SOPHIA[m]._patched) {
-                        SOPHIA[m] = () => pushLog(`SOPHIA.${m}`);
-                        SOPHIA[m]._patched = true;
-                    }
-                });
+            if (needsExtract) {
+                clearTimeout(extractTimeout);
+                extractTimeout = setTimeout(extractAndCopy, 100);
             }
-            if (window.ga && !window.ga._patched) {
-                const oldGa = window.ga;
-                window.ga = function(...args) {
-                    if (args[0] === 'send' && blockedGa.has(args[1])) {
-                        pushLog(args[1]);
-                        return;
-                    }
-                    return oldGa.apply(this, args);
-                };
-                window.ga._patched = true;
-            }
-        }, 1000);
-        setTimeout(() => clearInterval(cleanInterval), 15000);
+
+        }).observe(document.documentElement, { childList: true, subtree: true });
     };
 
     if (document.readyState === "loading") {
