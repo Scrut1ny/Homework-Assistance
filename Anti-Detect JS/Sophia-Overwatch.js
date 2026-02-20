@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      7.8
-// @description  Copies Q&A and blocks tracking (API-only, optimized + images)
+// @version      19.0
+// @description  Copies Q&A, blocks tracking, event-driven cookie destruction
 // @match        https://*.sophia.org/*
 // @run-at       document-start
 // @grant        GM_setClipboard
@@ -12,425 +12,234 @@
 (() => {
     "use strict";
 
-    const blockedHosts = [
-        "cdn.optimizely.com",
-        "static.cloudflareinsights.com",
-        "stat.sophia.org",
-        "stats.sophia.org",
-        "dpm.demdex.net",
-        "js.hs-scripts.com",
-        "analytics.sophia.org",
-        "assets.adobedtm.com",
-    ];
-
-    const blockedEvents = new Set([
-        "show_tour",
-        "close_tour",
-        "click_link",
-        "modal_view",
-        "alert_view",
-        "form_view",
-        "form_submit",
-        "form_field_change",
-        "form_step",
-    ]);
-
-    const blockedGa = new Set(["pageview"]);
-    const blockedSnowplow = new Set(["trackPageView", "trackStructEvent"]);
-    const sophiaMethods = [
-        "clickLinkForGA",
-        "clickModalCloseForGA",
-        "formGA",
-        "initPingator",
-        "clickToggleForGA",
-    ];
-
-    const state = {
-        lastOutput: "",
-        lastId: null,
-        lastPayload: null,
-        lastPath: location.pathname,
-        lastSearch: location.search,
-        log: null,
-        logTemplate: null,
-        scriptObs: null,
-        token: 0,
-        debounce: null,
-        lastResourceName: null,
-        resourcesDirty: true,
+    // --- CONFIGURATION ---
+    const CONFIG = {
+        blockedHosts: [
+            "cdn.optimizely.com", "static.cloudflareinsights.com", "stat.sophia.org",
+            "stats.sophia.org", "dpm.demdex.net", "js.hs-scripts.com",
+            "analytics.sophia.org", "assets.adobedtm.com"
+        ],
+        blockedEvents: new Set([
+            "show_tour", "close_tour", "click_link", "modal_view", "alert_view",
+            "form_view", "form_submit", "form_field_change", "form_step"
+        ]),
+        blockedCookies: [
+            /^sophia_st$/, // Sophia Session Timer
+            /^AMCV/,       // Adobe Marketing Cloud
+            /^AMCVS/,      // Adobe Analytics
+            /^_sp_/        // Snowplow Analytics
+        ]
     };
 
-    const parser = new DOMParser();
+    let logContainer = null;
+    let lastCopiedHash = ""; 
 
-    const RX_BR = /<br\s*\/?>/gi;
-    const RX_P = /<\/p>\s*<p>/gi;
-    const RX_TAG = /<\/?[^>]+>/g;
-    const RX_NL = /\s+\n/g;
-
-    const $all = (s, r = document) => Array.from(r.querySelectorAll(s));
-
+    // --- UI ---
     const injectStyles = () => {
+        if (document.getElementById('hp-styles')) return;
         const style = document.createElement("style");
+        style.id = 'hp-styles';
         style.textContent = `
-            #hp-log-container {
-                position: fixed;
-                right: 16px;
-                bottom: 16px;
-                display: flex;
-                flex-direction: column;
-                gap: 6px;
-                z-index: 999999;
-                pointer-events: none;
-                align-items: flex-end;
+            #hp-log-container { 
+                position: fixed; right: 16px; bottom: 16px; 
+                display: flex; flex-direction: column; gap: 6px; 
+                z-index: 2147483647; pointer-events: none; align-items: flex-end; 
             }
-            .hp-log {
-                background: #111;
-                color: #ff4d4d;
-                border: 1px solid #2a2a2a;
-                padding: 6px 10px;
-                border-radius: 6px;
-                font-size: 12px;
-                font-family: Consolas, monospace;
-                animation: hp-log-fade 10s ease forwards;
-                opacity: 1;
-                white-space: nowrap;
+            .hp-log { 
+                background: #1a1a1a; color: #ff5555; border: 1px solid #333; 
+                padding: 6px 10px; border-radius: 4px; font-size: 13px; 
+                font-family: Consolas, monospace; font-weight: bold; 
+                animation: hp-fade 6s ease forwards; opacity: 1; 
+                box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: auto; 
+                min-width: 150px; display: flex; align-items: center; gap: 8px;
             }
-            .hp-toast {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                padding: 8px 12px;
-                background: rgba(0,0,0,.8);
-                color: #fff;
-                border-radius: 6px;
-                font-size: 12px;
-                z-index: 99999;
+            .hp-toast { 
+                position: fixed; bottom: 16px; left: 16px; 
+                padding: 8px 12px; background: #1a1a1a; color: #4dff88; 
+                border: 1px solid #333; border-left: 3px solid #4dff88; 
+                border-radius: 4px; font-size: 20px; font-family: Consolas, monospace;
+                z-index: 2147483647; font-weight: bold; text-align: center;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                animation: hp-slide-in-left 0.3s ease forwards;
             }
-            @keyframes hp-log-fade {
-                0% { opacity: 1; transform: translateY(0); }
-                75% { opacity: 1; transform: translateY(-4px); }
-                100% { opacity: 0; transform: translateY(-10px); }
+            @keyframes hp-fade { 
+                0% { opacity: 0; transform: translateY(10px); } 
+                5% { opacity: 1; transform: translateY(0); }
+                85% { opacity: 1; transform: translateY(-5px); } 
+                100% { opacity: 0; transform: translateY(-20px); } 
+            }
+            @keyframes hp-slide-in-left {
+                0% { opacity: 0; transform: translateX(-20px); }
+                100% { opacity: 1; transform: translateX(0); }
             }
         `;
-        document.head.appendChild(style);
+        (document.head || document.documentElement).appendChild(style);
     };
 
-    const ensureLog = () => {
-        if (state.log) return state.log;
-        const log = document.createElement("div");
-        log.id = "hp-log-container";
-        document.body.appendChild(log);
-        state.log = log;
+    const getLogger = () => {
+        if (logContainer && document.contains(logContainer)) return logContainer;
+        logContainer = document.createElement("div");
+        logContainer.id = "hp-log-container";
+        (document.body || document.documentElement).appendChild(logContainer);
+        return logContainer;
+    };
 
-        const tmpl = document.createElement("div");
-        tmpl.className = "hp-log";
-        state.logTemplate = tmpl;
-
-        return log;
+    const pushLog = (rawMsg) => {
+        const container = getLogger();
+        const el = document.createElement("div");
+        el.className = "hp-log";
+        
+        let displayText = String(rawMsg);
+        if (displayText.includes("http")) {
+            try {
+                const urlMatch = displayText.match(/https?:\/\/[^ "']+/);
+                if (urlMatch) {
+                    const urlObj = new URL(urlMatch[0]);
+                    displayText = urlObj.hostname;
+                }
+            } catch (e) {}
+        }
+        
+        el.textContent = `🛡️ ${displayText}`; 
+        container.appendChild(el);
+        if (container.childElementCount > 8) container.firstElementChild.remove();
+        setTimeout(() => el.remove(), 6200);
     };
 
     const toast = (msg) => {
+        const existing = document.querySelector('.hp-toast');
+        if (existing) existing.remove();
+
         const el = document.createElement("div");
         el.className = "hp-toast";
         el.textContent = msg;
-        document.body.appendChild(el);
-        setTimeout(() => el.remove(), 1000);
+        (document.body || document.documentElement).appendChild(el);
+        setTimeout(() => el.remove(), 2500);
     };
 
-    const copy = (t) =>
-        typeof GM_setClipboard === "function"
-            ? (GM_setClipboard(t), Promise.resolve(true))
-            : navigator.clipboard?.writeText
-            ? navigator.clipboard.writeText(t).then(() => true)
-            : Promise.resolve(false);
+    // --- COOKIES ---
+    const activateCookieDefense = async () => {
+        if (!window.cookieStore) return;
 
-    const proxyProp = (obj, prop, onSet) => {
-        let v = obj[prop];
-        Object.defineProperty(obj, prop, {
-            get: () => v,
-            set: (nv) => ((v = nv), onSet(nv)),
-            configurable: true,
-        });
-    };
-
-    const proxyFn = (fn, shouldBlock) =>
-        new Proxy(fn || function () {}, {
-            apply(t, thisArg, args) {
-                if (shouldBlock(args)) return;
-                return Reflect.apply(t, thisArg, args);
-            },
-        });
-
-    const pushLog = (msg) => {
-        const c = ensureLog();
-        const el = state.logTemplate ? state.logTemplate.cloneNode(true) : document.createElement("div");
-        if (!el.className) el.className = "hp-log";
-        let text = String(msg || "").trim();
-        if (/^(https?:)?\/\//i.test(text)) {
-            try {
-                text = new URL(text, location.href).hostname;
-            } catch {}
-        }
-        el.innerHTML = `🛡️ <span class="hp-log-domain">${text}</span>`;
-        c.appendChild(el);
-        while (c.children.length > 10) c.removeChild(c.firstChild);
-        setTimeout(() => el.remove(), 10200);
-    };
-
-    const patchDataLayer = (arr) => {
-        if (!Array.isArray(arr)) return;
-        const push = Array.prototype.push;
-        arr.push = function (...args) {
-            const filtered = args.filter(
-                (e) => !(e && typeof e === "object" && blockedEvents.has(e.event)) || (pushLog(`dataLayer: ${e.event}`), false)
-            );
-            return filtered.length ? push.apply(this, filtered) : this.length;
+        const kill = (name) => {
+            window.cookieStore.delete(name);
+            pushLog(`Cookie: ${name}`);
         };
+
+        const all = await window.cookieStore.getAll();
+        all.filter(c => CONFIG.blockedCookies.some(r => r.test(c.name))).forEach(c => kill(c.name));
+
+        window.cookieStore.addEventListener('change', (event) => {
+            event.changed.forEach(c => {
+                if (CONFIG.blockedCookies.some(r => r.test(c.name))) {
+                    kill(c.name);
+                }
+            });
+        });
     };
 
-    const installSOPHIABlocks = () => {
-        if (typeof SOPHIA === "undefined") return false;
-        sophiaMethods.forEach((m) => SOPHIA[m] && (SOPHIA[m] = () => pushLog(`SOPHIA.${m}()`)));
-        if (SOPHIA.pingator) SOPHIA.pingator.setTarget = () => pushLog("SOPHIA.pingator.setTarget()");
-        return true;
-    };
-
-    const initTracking = () => {
+    // --- BLOCKING ---
+    const patchDataLayer = () => {
         window.dataLayer = window.dataLayer || [];
-        patchDataLayer(window.dataLayer);
-        proxyProp(window, "dataLayer", patchDataLayer);
-
-        window.ga = proxyFn(window.ga, (a) => a[0] === "send" && blockedGa.has(a[1]) && (pushLog(`ga(): ${a[1]}`), true));
-        window.snowplow = proxyFn(window.snowplow, (a) => blockedSnowplow.has(a[0]) && (pushLog(`snowplow(): ${a[0]}`), true));
-
-        const setItem = Storage.prototype.setItem;
-        Storage.prototype.setItem = function (k, v) {
-            if (k === "postponed_form_submit") return pushLog(`localStorage: ${k}`);
-            return setItem.call(this, k, v);
+        const originalPush = Array.prototype.push;
+        window.dataLayer.push = function(...args) {
+            const allowed = args.filter(a => !(a?.event && CONFIG.blockedEvents.has(a.event)));
+            args.forEach(a => { if(a?.event && CONFIG.blockedEvents.has(a.event)) pushLog(a.event); });
+            return allowed.length ? originalPush.apply(this, allowed) : this.length;
         };
-
-        if (!installSOPHIABlocks()) {
-            const t = setInterval(() => installSOPHIABlocks() && clearInterval(t), 100);
-            setTimeout(() => clearInterval(t), 15000);
-        }
-        proxyProp(window, "SOPHIA", (v) => v && installSOPHIABlocks());
-
-        const desc =
-            Object.getOwnPropertyDescriptor(Document.prototype, "cookie") ||
-            Object.getOwnPropertyDescriptor(HTMLDocument.prototype, "cookie");
-        if (desc?.set) {
-            Object.defineProperty(document, "cookie", {
-                get() {
-                    return desc.get.call(this);
-                },
-                set(val) {
-                    if (typeof val === "string" && val.startsWith("sophia_st=")) return pushLog("sophia_st cookie write");
-                    return desc.set.call(this, val);
-                },
-                configurable: true,
-            });
-        }
     };
 
-    const extractQuestion = (html) => {
-        const doc = parser.parseFromString(html || "", "text/html");
-        const body = doc.body;
-        const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-
-        let text = "";
-        let needsBreak = false;
-
-        const pushBreak = () => {
-            if (!needsBreak) return;
-            text += "\n\n";
-            needsBreak = false;
-        };
-
-        let n = walker.currentNode;
-        while (n) {
-            if (n.nodeType === 3) {
-                const v = n.nodeValue || "";
-                if (v.trim()) {
-                    pushBreak();
-                    text += v;
-                }
-            } else if (n.nodeType === 1) {
-                const tag = n.tagName;
-                if (tag === "BR" || tag === "P") needsBreak = true;
-                if (tag === "IMG") {
-                    const alt = n.getAttribute("alt")?.trim();
-                    if (alt) {
-                        pushBreak();
-                        text += (text ? "\n\n" : "") + "Image Description:\n" + alt;
-                    }
-                }
-            }
-            n = walker.nextNode();
-        }
-
-        return text.trim() ? text.split(/\n{3,}/).join("\n\n") : "";
-    };
-
-    const stripHtml = (html) =>
-        (html || "")
-            .replace(RX_BR, "\n")
-            .replace(RX_P, "\n\n")
-            .replace(RX_TAG, "")
-            .replace(RX_NL, "\n")
-            .trim();
-
-    const formatAnswer = (text, prefix) => {
-        const lines = text.split("\n").filter(Boolean);
-        if (!lines.length) return prefix;
-        const [first, ...rest] = lines;
-        return [prefix + first, ...rest.map((l) => `        ${l}`)].join("\n");
-    };
-
-    const findId = () => {
-        if (!state.resourcesDirty && state.lastResourceName) {
-            const m = state.lastResourceName.match(/milestone_question_takes\/(\d+)/);
-            return m ? m[1] : null;
-        }
-        const entries = performance.getEntriesByType("resource");
-        for (let i = entries.length - 1; i >= 0; i--) {
-            const name = entries[i]?.name || "";
-            if (name.includes("milestone_question_takes/")) {
-                state.lastResourceName = name;
-                state.resourcesDirty = false;
-                const m = name.match(/milestone_question_takes\/(\d+)/);
-                return m ? m[1] : null;
-            }
-        }
-        return null;
-    };
-
-    const fetchPayload = async () => {
-        const id = findId();
-        if (!id) return null;
-        if (state.lastId === id && state.lastPayload) return state.lastPayload;
-
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-        if (!csrf) return null;
-
-        try {
-            const res = await fetch(`/milestone_question_takes/${id}`, {
-                credentials: "include",
-                headers: {
-                    Accept: "application/json, text/javascript, */*; q=0.01",
-                    "X-CSRF-Token": csrf,
-                    "X-Requested-With": "XMLHttpRequest",
-                },
-            });
-            if (!res.ok) return null;
-            const data = await res.json();
-            if (!data?.question?.question_body || !data?.question?.answers) return null;
-            state.lastId = id;
-            state.lastPayload = data;
-            return data;
-        } catch {
-            return null;
-        }
-    };
-
-    const extractQA = async () => {
-        const d = await fetchPayload();
-        if (!d) return null;
-
-        const q = extractQuestion(d.question.question_body);
-        const a = d.question.answers || [];
-        if (!q || !a.length) return null;
-
-        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        const answers = a.map((x, i) => {
-            const text = stripHtml(x.content);
-            return `- ${formatAnswer(text, `${letters[i] || "?"}.) `)}`;
-        });
-
-        return `${q}\n\nPossible answers:\n${answers.join("\n")}`;
-    };
-
-    const render = async () => {
-        const token = ++state.token;
-        const out = await extractQA();
-        if (token !== state.token || !out || out === state.lastOutput) return;
-        state.lastOutput = out;
-        copy(out).then((ok) => toast(ok ? "Copied!" : "Clipboard unavailable.")).catch(() => toast("Copy failed."));
-    };
-
-    const schedule = () => {
-        if (state.debounce) clearTimeout(state.debounce);
-        state.debounce = setTimeout(() => {
-            state.debounce = null;
-            render();
-        }, 350);
-    };
-
-    const isBlocked = (src) => {
-        try {
-            const u = new URL(src, location.href);
-            return blockedHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
-        } catch {
-            return false;
-        }
-    };
-
-    const removeBlockedScripts = (root = document) => {
-        $all("script[src]", root).forEach((s) => {
-            if (isBlocked(s.src)) {
-                pushLog(s.src);
+    const blockNetwork = () => {
+        document.querySelectorAll('script[src]').forEach(s => {
+            if (CONFIG.blockedHosts.some(h => s.src.includes(h))) {
                 s.remove();
+                pushLog(s.src);
             }
         });
     };
 
-    const startBlocker = () => {
-        removeBlockedScripts();
-        if (state.scriptObs) return;
-        state.scriptObs = new MutationObserver((muts) =>
-            muts.forEach((m) =>
-                m.addedNodes.forEach((n) => {
-                    if (n.tagName === "SCRIPT" && n.src && isBlocked(n.src)) {
-                        pushLog(n.src);
-                        n.remove();
-                    }
-                })
-            )
-        );
-        state.scriptObs.observe(document.documentElement, { childList: true, subtree: true });
-    };
-
-    const onRoute = () => {
-        if (location.pathname !== state.lastPath || location.search !== state.lastSearch) {
-            state.lastPath = location.pathname;
-            state.lastSearch = location.search;
-            state.resourcesDirty = true;
-            schedule();
+    // --- EXTRACTION ---
+    const simpleHash = (str) => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
         }
+        return hash;
     };
 
-    const hookHistory = () => {
-        const wrap = (fn) =>
-            function (...args) {
-                const ret = fn.apply(this, args);
-                onRoute();
-                return ret;
-            };
-        history.pushState = wrap(history.pushState);
-        history.replaceState = wrap(history.replaceState);
-        window.addEventListener("popstate", onRoute);
+    const getCleanTextFromNode = (node) => {
+        if (!node) return "";
+        const clone = node.cloneNode(true);
+        
+        clone.querySelectorAll('img').forEach(img => {
+            if (img.alt?.trim()) img.replaceWith(`[Image: ${img.alt.trim()}] `);
+        });
+
+        clone.querySelectorAll('table').forEach(table => {
+            let tableText = "\n";
+            const rows = table.querySelectorAll('tr');
+            rows.forEach((row, i) => {
+                const cells = Array.from(row.querySelectorAll('td, th'))
+                    .map(c => c.innerText.trim().replace(/\n/g, ' '));
+                tableText += `| ${cells.join(' | ')} |\n`;
+                if (i === 0) tableText += `| ${cells.map(() => '---').join(' | ')} |\n`;
+            });
+            const pre = document.createElement('div');
+            pre.innerText = tableText + "\n";
+            table.replaceWith(pre);
+        });
+
+        clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        return clone.innerText.trim().replace(/\n\s*\n/g, '\n\n'); 
     };
 
-    const start = () => {
+    const extractAndCopy = () => {
+        const qContainer = document.querySelector('.challenge-v2-question__text, .question-body');
+        const aList = document.querySelector('.challenge-v2-answer__list');
+        if (!qContainer || !aList) return;
+
+        let finalQ = getCleanTextFromNode(qContainer);
+        
+        const finalAnswers = Array.from(aList.querySelectorAll('li'))
+            .map(li => {
+                if (li.classList.contains('rationale-item')) return null;
+                const letter = li.querySelector('.letter')?.innerText.trim() || "-";
+                const textEl = li.querySelector('.challenge-v2-answer__text div, .challenge-v2-answer__text');
+                return textEl ? `${letter} ${getCleanTextFromNode(textEl)}` : null;
+            })
+            .filter(Boolean)
+            .join('\n'); 
+
+        const fullText = `QUESTION:\n${finalQ}\n\nOPTIONS:\n${finalAnswers}`;
+        const contentHash = simpleHash(fullText);
+        
+        if (contentHash === lastCopiedHash) return;
+        lastCopiedHash = contentHash;
+
+        GM_setClipboard(fullText);
+        toast("📋"); 
+    };
+
+    // --- INIT ---
+    const init = () => {
         injectStyles();
-        hookHistory();
-        startBlocker();
-        render();
+        patchDataLayer();
+        activateCookieDefense(); 
+        
+        const loop = setInterval(() => {
+            extractAndCopy();
+            blockNetwork();
+        }, 1000);
+
+        setTimeout(() => clearInterval(loop), 15000);
+        setInterval(extractAndCopy, 1000); 
     };
 
-    document.addEventListener("DOMContentLoaded", initTracking);
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+    } else {
+        init();
+    }
 
-    (function waitForBody() {
-        if (document.body) return start();
-        setTimeout(waitForBody, 200);
-    })();
 })();
