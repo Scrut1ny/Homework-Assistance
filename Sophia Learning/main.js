@@ -38,7 +38,7 @@
         },
         call: {
             ga: new Set(["pageview", "send", "create", "require"]),
- snowplow: new Set(["trackPageView", "trackStructEvent", "newTracker"])
+            snowplow: new Set(["trackPageView", "trackStructEvent", "newTracker"])
         }
     };
 
@@ -46,7 +46,9 @@
 
     const Q_SELECTOR = ".challenge-v2-question__text, .question-body .question, .question-body";
     const A_SELECTOR = ".challenge-v2-answer__list, .multiple-choice-answer-fields";
-    const Q_STRIP = "ul.multiple-choice-answer-fields, ul.answer-fields, .challenge-v2-answer__list, #resubmit-message-place, #helpful-tutorials-message-place";
+
+    const Q_STRIP = "ul.multiple-choice-answer-fields, ul.answer-fields, .challenge-v2-answer__list, #resubmit-message-place, #helpful-tutorials-message-place, .button-block, .control-section, .assessment-report-wrapper, .letter";
+
     const EXTRACT_TAGS = new Set(["DIV", "UL", "LI"]);
 
     let logContainer = null;
@@ -233,7 +235,7 @@
             Object.defineProperty(w, key, {
                 configurable: true,
                 get: () => shim,
-                                  set: (val) => { shim = createShim(val, key, type, rules); }
+                set: (val) => { shim = createShim(val, key, type, rules); }
             });
         } catch (e) {
             console.warn(`Failed to hook ${key}`, e);
@@ -297,10 +299,14 @@
         const finalAnswers = [...aList.querySelectorAll("li")]
         .filter(li => !li.classList.contains("rationale-item"))
         .map((li, idx) => {
-            const letter = li.querySelector(".letter")?.innerText.trim()
-            || String.fromCharCode(65 + idx) + ".)";
-            const textEl = li.querySelector(".challenge-v2-answer__text div, .challenge-v2-answer__text, label div");
-            return textEl ? `${letter} ${getCleanText(textEl)}` : null;
+            const textEl = li.querySelector(".challenge-v2-answer__text div, .challenge-v2-answer__text, label div") || li;
+            let text = getCleanText(textEl);
+            if (!text) return null;
+            const expectedChar = String.fromCharCode(65 + idx);
+            const prefixRegex = new RegExp(`^(${expectedChar}[\\.\\)]+\\s*)+`, "i");
+            text = text.replace(prefixRegex, "");
+
+            return `${expectedChar}.) ${text}`;
         })
         .filter(Boolean)
         .join("\n");
@@ -339,16 +345,16 @@
         if (needsExtract) scheduleExtract();
     });
 
-        const init = () => {
-            injectStyles();
-            patchTracking();
-            patchNetwork();
-            activateCookieDefense();
-            setInterval(extractAndCopy, 1000);
-            observer.observe(ROOT, { childList: true, subtree: true });
-        };
+    const init = () => {
+        injectStyles();
+        patchTracking();
+        patchNetwork();
+        activateCookieDefense();
+        setInterval(extractAndCopy, 1000);
+        observer.observe(ROOT, { childList: true, subtree: true });
+    };
 
-        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-        else init();
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+    else init();
 
 })();
