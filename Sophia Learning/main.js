@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sophia Overwatch
 // @namespace    https://github.com/Scrut1ny
-// @version      23.6
+// @version      24.0
 // @description  Copies Q&A, blocks tracking, event-driven cookie destruction
 // @match        https://*.sophia.org/*
 // @run-at       document-start
@@ -33,7 +33,7 @@
             },
             optimizely: {
                 trigger: "type",
-                block: new Set(["event", "user"])
+                block: new Set(["event", "user", "activate"])
             }
         },
         call: {
@@ -43,6 +43,8 @@
     };
 
     const BLOCKED_COOKIE_RE = /^(sophia_st|AMCVS?|_sp_)/;
+
+    const BLOCKED_STORAGE_KEYS = new Set(["postponed_form_submit"]);
 
     const Q_SELECTOR = ".challenge-v2-question__text, .question-body .question, .question-body";
     const A_SELECTOR = ".challenge-v2-answer__list, .multiple-choice-answer-fields";
@@ -148,6 +150,44 @@
         );
     };
 
+    // --- LOCALSTORAGE DEFENSE ---
+    const patchLocalStorage = () => {
+        const origSetItem = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = function(key, value) {
+            if (BLOCKED_STORAGE_KEYS.has(key)) {
+                pushLog(`localStorage: ${key}`);
+                return;
+            }
+            return origSetItem.apply(this, arguments);
+        };
+    };
+
+    // --- DATALAYER SANITIZATION ---
+    const patchDataLayerPush = () => {
+        const origPush = Array.prototype.push;
+        const handler = {
+            apply(target, thisArg, args) {
+                if (thisArg === w.dataLayer) {
+                    const filtered = args.filter(arg => {
+                        if (arg && typeof arg === "object") {
+                            if ("session_duration" in arg) {
+                                delete arg.session_duration;
+                            }
+                            if ("userId" in arg) {
+                                pushLog(`dataLayer: userId leak (${arg.event || "unknown"})`);
+                                return false;
+                            }
+                        }
+                        return true;
+                    });
+                    return origPush.apply(thisArg, filtered);
+                }
+                return origPush.apply(thisArg, args);
+            }
+        };
+        Array.prototype.push = new Proxy(origPush, handler);
+    };
+
     // --- NETWORK INTERCEPTION ---
     const patchNetwork = () => {
         const origFetch = w.fetch;
@@ -235,7 +275,7 @@
             Object.defineProperty(w, key, {
                 configurable: true,
                 get: () => shim,
-                set: (val) => { shim = createShim(val, key, type, rules); }
+                                  set: (val) => { shim = createShim(val, key, type, rules); }
             });
         } catch (e) {
             console.warn(`Failed to hook ${key}`, e);
@@ -304,9 +344,9 @@
             if (!text) return null;
             const expectedChar = String.fromCharCode(65 + idx);
             const prefixRegex = new RegExp(`^(${expectedChar}[\\.\\)]+\\s*)+`, "i");
-            text = text.replace(prefixRegex, "");
+        text = text.replace(prefixRegex, "");
 
-            return `${expectedChar}.) ${text}`;
+        return `${expectedChar}.) ${text}`;
         })
         .filter(Boolean)
         .join("\n");
@@ -345,16 +385,18 @@
         if (needsExtract) scheduleExtract();
     });
 
-    const init = () => {
-        injectStyles();
-        patchTracking();
-        patchNetwork();
-        activateCookieDefense();
-        setInterval(extractAndCopy, 1000);
-        observer.observe(ROOT, { childList: true, subtree: true });
-    };
+        const init = () => {
+            injectStyles();
+            patchTracking();
+            patchNetwork();
+            patchLocalStorage();
+            patchDataLayerPush();
+            activateCookieDefense();
+            setInterval(extractAndCopy, 1000);
+            observer.observe(ROOT, { childList: true, subtree: true });
+        };
 
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-    else init();
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+        else init();
 
 })();
