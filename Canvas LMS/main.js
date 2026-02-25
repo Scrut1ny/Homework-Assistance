@@ -3,8 +3,7 @@
 // @namespace    https://github.com/instructure/canvas-lms
 // @version      2.0
 // @description  Blocks all 5 quiz log auditing event trackers in Canvas LMS
-// @match        https://*.instructure.com/*
-// @match        https://canvas.*/*
+// @match        *
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -33,3 +32,4 @@
     return _send.call(this, body);
   };
 })();
+
