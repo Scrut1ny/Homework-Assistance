@@ -7,6 +7,8 @@
 // @grant        none
 // ==/UserScript==
 
+// https://webbrowsertools.com/test-always-active/
+
 (function() {
     'use strict';
 
