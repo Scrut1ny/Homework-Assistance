@@ -46,9 +46,10 @@
     const BLOCKED_COOKIE_RE = /^(sophia_st|AMCVS?|_sp_)/;
     const BLOCKED_STORAGE_KEYS = new Set(["postponed_form_submit"]);
 
-    const Q_SELECTOR = ".challenge-v2-question__text, .question-body .question, .question-body";
     const A_SELECTOR = ".challenge-v2-answer__list, .multiple-choice-answer-fields";
     const Q_STRIP = "ul.multiple-choice-answer-fields, ul.answer-fields, .challenge-v2-answer__list, #resubmit-message-place, #helpful-tutorials-message-place, .button-block, .control-section, .assessment-report-wrapper, .letter";
+    const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+    const PREFIX_RE = [/^a\.\)\s*/i, /^b\.\)\s*/i, /^c\.\)\s*/i, /^d\.\)\s*/i, /^e\.\)\s*/i, /^f\.\)\s*/i, /^g\.\)\s*/i, /^h\.\)\s*/i];
 
     // --- STATE ---
     let logContainer = null;
@@ -316,40 +317,26 @@
         return h;
     };
 
-    const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    const PREFIX_RE = [];
-    for (let i = 0; i < 26; i++) {
-        PREFIX_RE[i] = new RegExp(`^(${LETTERS[i]}[\\.\\)]+\\s*)+`, "i");
-    }
-
     const getCleanText = (node) => {
         if (!node) return "";
         const clone = node.cloneNode(true);
+        const text = (str) => document.createTextNode(str);
 
         for (const el of clone.querySelectorAll(Q_STRIP)) el.remove();
 
         for (const img of clone.querySelectorAll("img")) {
-            if (img.alt) img.replaceWith(document.createTextNode("[Image: " + img.alt.trim() + "] "));
+            if (img.alt) img.replaceWith(text(`[Image: ${img.alt.trim()}] `));
         }
 
         for (const table of clone.querySelectorAll("table")) {
             const rows = table.querySelectorAll("tr");
             let txt = "\n";
-            for (let i = 0; i < rows.length; i++) {
-                const cells = rows[i].querySelectorAll("td, th");
-                let row = "| ";
-                let sep = "| ";
-                for (let j = 0; j < cells.length; j++) {
-                    if (j > 0) { row += " | "; sep += " | "; }
-                    row += cells[j].innerText.trim().replace(/\n/g, " ");
-                    sep += "---";
-                }
-                txt += row + " |\n";
-                if (i === 0) txt += sep + " |\n";
-            }
-            const div = document.createElement("div");
-            div.innerText = txt + "\n";
-            table.replaceWith(div);
+            rows.forEach((row, i) => {
+                const cells = [...row.querySelectorAll("td, th")].map(c => c.innerText.trim().replace(/\n/g, " "));
+                txt += `| ${cells.join(" | ")} |\n`;
+                if (i === 0) txt += `| ${cells.map(() => "---").join(" | ")} |\n`;
+            });
+            table.replaceWith(Object.assign(document.createElement("div"), { innerText: txt + "\n" }));
         }
 
         for (const p of clone.querySelectorAll("p")) p.append("\n");
@@ -359,14 +346,26 @@
     };
 
     const extractAndCopy = () => {
-        const qContainer = document.querySelector(Q_SELECTOR);
+        // ── Question container: prefer narrow selectors (no Q_STRIP needed) ──
+        const qContainer = document.querySelector(".challenge-v2-question__text")
+                        || document.querySelector(".question-body .question")
+                        || document.querySelector(".question-body");
+
         const aList = document.querySelector(A_SELECTOR);
         if (!qContainer || !aList) return;
 
-        const currentRaw = qContainer.innerText;
+        // ── Early-exit: combine question + answer text for change detection ──
+        const currentRaw = qContainer.innerText + "\0" + aList.innerText;
         if (currentRaw === lastRawText) return;
 
-        const finalQ = getCleanText(qContainer);
+        // ── Question text: fast path only when truly plain text ──
+        const hasComplexQ = qContainer.querySelector("img, table");
+        const needsStripQ = qContainer.querySelector(Q_STRIP);
+        const finalQ = (hasComplexQ || needsStripQ)
+                     ? getCleanText(qContainer)
+                     : qContainer.innerText.trim();
+
+        // ── Answer extraction ──
         const items = aList.querySelectorAll("li");
         let finalAnswers = "";
         let idx = 0;
@@ -374,9 +373,19 @@
         for (let i = 0; i < items.length; i++) {
             const li = items[i];
             if (li.classList.contains("rationale-item")) continue;
-            const textEl = li.querySelector(".challenge-v2-answer__text div, .challenge-v2-answer__text, label div") || li;
-            let text = getCleanText(textEl);
+
+            // Prefer the narrowest element (no .letter span inside)
+            const textEl = li.querySelector(".challenge-v2-answer__text div")
+                        || li.querySelector("label div")
+                        || li.querySelector(".challenge-v2-answer__text")
+                        || li;
+
+            // Fast path: simple text-only answers skip cloneNode entirely
+            const isSimple = !textEl.querySelector("img, table, br");
+            let text = isSimple ? textEl.innerText.trim() : getCleanText(textEl);
+
             if (!text) continue;
+
             const letter = LETTERS[idx];
             text = text.replace(PREFIX_RE[idx], "");
             if (finalAnswers) finalAnswers += "\n";
