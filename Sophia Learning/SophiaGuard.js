@@ -120,7 +120,7 @@
         }, 2500);
     };
 
-    // --- BLOCKING HELPERS ---
+    // --- NETWORK & REQUEST BLOCKING ---
     const isBlocked = (urlStr) => {
         if (!urlStr) return false;
         const s = urlStr.indexOf("//");
@@ -131,47 +131,7 @@
         return BLOCKED_HOSTS.has(host);
     };
 
-    // --- COOKIE DEFENSE ---
-    const activateCookieDefense = async () => {
-        const store = w.cookieStore;
-        if (!store) return;
-
-        const purge = (name) => {
-            store.delete(name);
-            pushLog(`Cookie: ${name}`);
-        };
-
-        for (const { name } of await store.getAll()) {
-            if (BLOCKED_COOKIE_RE.test(name)) purge(name);
-        }
-
-        store.addEventListener("change", ({ changed }) => {
-            for (const { name } of changed) {
-                if (BLOCKED_COOKIE_RE.test(name)) purge(name);
-            }
-        });
-    };
-
-    // --- LOCALSTORAGE DEFENSE ---
-    const patchLocalStorage = () => {
-        const origSetItem = w.Storage.prototype.setItem;
-        const patched = function (key, value) {
-            if (BLOCKED_STORAGE_KEYS.has(key)) {
-                pushLog(`localStorage: ${key}`);
-                return;
-            }
-            origSetItem.call(this, key, value);
-        };
-        Object.defineProperty(w.Storage.prototype, "setItem", {
-            value: patched,
-            writable: false,
-            configurable: false
-        });
-    };
-
-    // --- NETWORK INTERCEPTION ---
     const patchNetwork = () => {
-        // --- Fetch ---
         const origFetch = w.fetch;
         const blockedResponse = new Response("", { status: 200 });
         const patched_fetch = function (input, init) {
@@ -188,7 +148,6 @@
             configurable: false
         });
 
-        // --- XHR ---
         const XHR = w.XMLHttpRequest.prototype;
         const origOpen = XHR.open;
         const origSend = XHR.send;
@@ -219,7 +178,6 @@
             configurable: false
         });
 
-        // --- Beacon ---
         const origBeacon = w.navigator.sendBeacon;
         if (origBeacon) {
             const patched_beacon = function (url, data) {
@@ -237,7 +195,7 @@
         }
     };
 
-    // --- UNIVERSAL PROXY INTERCEPTION ---
+    // --- TRACKING INTERCEPTION ---
     const installTrap = (key, type, rules) => {
         const isPush = type === "push";
         const isDataLayer = key === "dataLayer";
@@ -308,7 +266,44 @@
         }
     };
 
-    // --- EXTRACTION ---
+    // --- STORAGE DEFENSE ---
+    const activateCookieDefense = async () => {
+        const store = w.cookieStore;
+        if (!store) return;
+
+        const purge = (name) => {
+            store.delete(name);
+            pushLog(`Cookie: ${name}`);
+        };
+
+        for (const { name } of await store.getAll()) {
+            if (BLOCKED_COOKIE_RE.test(name)) purge(name);
+        }
+
+        store.addEventListener("change", ({ changed }) => {
+            for (const { name } of changed) {
+                if (BLOCKED_COOKIE_RE.test(name)) purge(name);
+            }
+        });
+    };
+
+    const patchLocalStorage = () => {
+        const origSetItem = w.Storage.prototype.setItem;
+        const patched = function (key, value) {
+            if (BLOCKED_STORAGE_KEYS.has(key)) {
+                pushLog(`localStorage: ${key}`);
+                return;
+            }
+            origSetItem.call(this, key, value);
+        };
+        Object.defineProperty(w.Storage.prototype, "setItem", {
+            value: patched,
+            writable: false,
+            configurable: false
+        });
+    };
+
+    // --- Q&A EXTRACTION ---
     const simpleHash = (str) => {
         let h = 0;
         for (let i = 0, len = str.length; i < len; i++) {
@@ -346,7 +341,6 @@
     };
 
     const extractAndCopy = () => {
-        // ── Question container: prefer narrow selectors (no Q_STRIP needed) ──
         const qContainer = document.querySelector(".challenge-v2-question__text")
                         || document.querySelector(".question-body .question")
                         || document.querySelector(".question-body");
@@ -354,18 +348,13 @@
         const aList = document.querySelector(A_SELECTOR);
         if (!qContainer || !aList) return;
 
-        // ── Early-exit: combine question + answer text for change detection ──
         const currentRaw = qContainer.innerText + "\0" + aList.innerText;
         if (currentRaw === lastRawText) return;
 
-        // ── Question text: fast path only when truly plain text ──
-        const hasComplexQ = qContainer.querySelector("img, table");
-        const needsStripQ = qContainer.querySelector(Q_STRIP);
-        const finalQ = (hasComplexQ || needsStripQ)
+        const finalQ = qContainer.querySelector("img, table") || qContainer.querySelector(Q_STRIP)
                      ? getCleanText(qContainer)
                      : qContainer.innerText.trim();
 
-        // ── Answer extraction ──
         const items = aList.querySelectorAll("li");
         let finalAnswers = "";
         let idx = 0;
@@ -374,15 +363,14 @@
             const li = items[i];
             if (li.classList.contains("rationale-item")) continue;
 
-            // Prefer the narrowest element (no .letter span inside)
             const textEl = li.querySelector(".challenge-v2-answer__text div")
                         || li.querySelector("label div")
                         || li.querySelector(".challenge-v2-answer__text")
                         || li;
 
-            // Fast path: simple text-only answers skip cloneNode entirely
-            const isSimple = !textEl.querySelector("img, table, br");
-            let text = isSimple ? textEl.innerText.trim() : getCleanText(textEl);
+            let text = textEl.querySelector("img, table, br")
+                     ? getCleanText(textEl)
+                     : textEl.innerText.trim();
 
             if (!text) continue;
 
