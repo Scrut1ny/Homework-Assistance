@@ -49,7 +49,7 @@
     const A_SELECTOR = ".challenge-v2-answer__list, .multiple-choice-answer-fields";
     const Q_STRIP = "ul.multiple-choice-answer-fields, ul.answer-fields, .challenge-v2-answer__list, #resubmit-message-place, #helpful-tutorials-message-place, .button-block, .control-section, .assessment-report-wrapper, .letter";
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-    const PREFIX_RE = [/^a\.\)\s*/i, /^b\.\)\s*/i, /^c\.\)\s*/i, /^d\.\)\s*/i, /^e\.\)\s*/i, /^f\.\)\s*/i, /^g\.\)\s*/i, /^h\.\)\s*/i];
+    const PREFIX_RE = /^[a-h]\.\)\s*/i;
 
     // --- STATE ---
     let logContainer = null;
