@@ -53,19 +53,21 @@
 
     // --- STATE ---
     let logContainer = null;
-    let logCount = 0;
     let activeToast = null;
     let lastCopiedHash = 0;
     let lastRawText = "";
     let extractTimeout = null;
     let toastTimer = null;
     let initialized = false;
-
+    
+    const MAX_LOGS = 8;
+    
     // --- UI ---
     const ROOT = document.documentElement;
-
+    
     const injectStyles = () => {
         if (document.getElementById("hp-styles")) return;
+    
         const style = document.createElement("style");
         style.id = "hp-styles";
         style.textContent =
@@ -74,48 +76,65 @@
             ".hp-toast{position:fixed;bottom:16px;left:16px;padding:8px 12px;background:#1a1a1a;color:#4dff88;border:1px solid #333;border-left:3px solid #4dff88;border-radius:4px;font-size:20px;font-family:Consolas,monospace;z-index:2147483647;font-weight:bold;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.5);animation:hp-slide-in-left .3s ease forwards}" +
             "@keyframes hp-fade{0%{opacity:0;transform:translateY(10px)}5%{opacity:1;transform:translateY(0)}85%{opacity:1;transform:translateY(-5px)}100%{opacity:0;transform:translateY(-20px)}}" +
             "@keyframes hp-slide-in-left{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}";
+    
         (document.head || ROOT).appendChild(style);
     };
-
+    
     const extractHost = (str) => {
         const s = str.indexOf("://");
         if (s === -1) return str;
+    
         const start = s + 3;
         const end = str.indexOf("/", start);
-        return end === -1 ? str.slice(start) : str.substring(start, end);
+    
+        return end === -1
+            ? str.slice(start)
+            : str.substring(start, end);
     };
-
+    
     const pushLog = (rawMsg) => {
         if (!logContainer) {
             logContainer = document.createElement("div");
             logContainer.id = "hp-log-container";
             document.body.appendChild(logContainer);
         }
+    
         const el = document.createElement("div");
         el.className = "hp-log";
         el.textContent = "\u{1F6E1}\uFE0F " + extractHost(rawMsg);
+    
         logContainer.appendChild(el);
-        logCount++;
-        if (logCount > 8) {
-            logContainer.firstChild.remove();
-            logCount--;
+    
+        while (logContainer.children.length > MAX_LOGS) {
+            logContainer.firstElementChild.remove();
         }
+    
         el.addEventListener("animationend", () => {
-            el.remove();
-            logCount--;
+            if (el.isConnected) {
+                el.remove();
+            }
         }, { once: true });
     };
-
+    
     const toast = (msg) => {
-        if (activeToast) activeToast.remove();
+        if (activeToast) {
+            activeToast.remove();
+            activeToast = null;
+        }
+    
         clearTimeout(toastTimer);
+    
         const el = document.createElement("div");
         el.className = "hp-toast";
         el.textContent = msg;
+    
         document.body.appendChild(el);
         activeToast = el;
+    
         toastTimer = setTimeout(() => {
-            el.remove();
+            if (el.isConnected) {
+                el.remove();
+            }
             activeToast = null;
         }, 2500);
     };
