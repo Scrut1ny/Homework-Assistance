@@ -114,7 +114,7 @@ quizlet.com##+js(set-local-storage-item, setPageVisitsCount, $remove$)
 - [thetawise](https://thetawise.ai/)
 
 ## English
-- [Plagiarism Checker](https://plagscanpro.com/)
+- [Plagiarism Checker](https://plagiarismcheck.org/for-students/)
 
 ## ASTRO101
 - [constellation-list](https://www.constellation-guide.com/constellation-list/)
