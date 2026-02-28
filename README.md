@@ -113,6 +113,9 @@ quizlet.com##+js(set-local-storage-item, setPageVisitsCount, $remove$)
 - [wolframalpha](https://www.wolframalpha.com/)
 - [thetawise](https://thetawise.ai/)
 
+## English
+- [Plagiarism Checker](https://plagscanpro.com/)
+
 ## ASTRO101
 - [constellation-list](https://www.constellation-guide.com/constellation-list/)
 - [Greek_alphabet](https://en.wikipedia.org/wiki/Greek_alphabet)
