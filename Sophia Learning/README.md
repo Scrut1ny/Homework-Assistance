@@ -1,11 +1,21 @@
 ### Third party resources Sophia uses:
 - [Copyleaks](https://copyleaks.com/ai-content-detector)
 
+
+
+
+
 ---
+
+
+
+
 
 ## Global Helper Functions
 
-### Current User Information
+<details>
+<summary>Current User Information</summary>
+
 ```javascript
 SOPHIA.currentUserId()           // User ID
 SOPHIA.currentUserSlug()         // User slug (URL-friendly identifier)
@@ -17,17 +27,7 @@ SOPHIA.currentUserProgramId()    // Program ID
 SOPHIA.loggedIn()                // Check if logged in
 ```
 
-
-
-
-
-
-
-
-
-
-
-
+</details>
 
 
 
@@ -35,9 +35,15 @@ SOPHIA.loggedIn()                // Check if logged in
 
 ---
 
+
+
+
+
 ## Automate Button Selection
 
-#### Challenges
+<details>
+<summary>Challenges</summary>
+
 ```javascript
 $('#answer-0').click()   // Select answer A
 $('#answer-1').click()   // Select answer B
@@ -48,7 +54,11 @@ $('#answer-3').click()   // Select answer D
 document.querySelector('button.f-button.blue').click()   // Submit My Answer
 ```
 
-#### Milestones
+</details>
+
+<details>
+<summary>Milestones</summary>
+
 ```javascript
 $('#answer_cb_0').click()   // Select answer A
 $('#answer_cb_1').click()   // Select answer B
@@ -59,11 +69,26 @@ $('#answer_cb_3').click()   // Select answer D
 document.querySelector('.submit_block button.f-button.blue').click()   // Save & Continue
 ```
 
+</details>
+
 > **Note:** The submit/save buttons will only work after an answer has been selected.
+
+
+
+
+
 
 ---
 
-### How Sophia Q&A Works
+
+
+
+
+
+## How Sophia Q&A Works
+
+<details>
+<summary>Overview</summary>
 
 When you answer a question, here's what happens under the hood:
 
@@ -73,7 +98,10 @@ When you answer a question, here's what happens under the hood:
 4. The server validates your answer and responds with the full question data, including which answer is `correct: true`
 5. The Vue store updates and the UI re-renders to show correct/incorrect
 
-#### Exploiting This
+</details>
+
+<details>
+<summary>Exploiting This</summary>
 
 We can send a dummy answer (`answer: 0`) to the server, and instead of rendering the result, we **intercept the response** to find which answer has `correct: true` — then auto-select it before actually submitting.
 
@@ -93,7 +121,10 @@ $.ajax({
 });
 ```
 
-#### How It Works Step by Step
+</details>
+
+<details>
+<summary>How It Works Step by Step</summary>
 
 | Step | What Happens |
 |------|-------------|
@@ -105,5 +136,6 @@ $.ajax({
 | 6 | Auto-clicks the correct answer in the UI |
 | 7 | You click **Submit** to lock it in |
 
----
+</details>
 
+> **Note:** The probe request consumes one attempt. This is only useful for **Challenges** where you need to preserve attempts — Milestones don't track attempts.
