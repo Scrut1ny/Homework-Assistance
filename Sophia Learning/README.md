@@ -49,11 +49,9 @@ $('#answer-0').click()   // Select answer A
 $('#answer-1').click()   // Select answer B
 $('#answer-2').click()   // Select answer C
 $('#answer-3').click()   // Select answer D
-```
-```javascript
+
 document.querySelector('button.f-button.blue').click()   // Submit My Answer
-```
-```javascript
+
 document.querySelector('button[data-km-value*="go-to-the-next-concept"]').click()   // Go to the Next Concept
 ```
 
@@ -67,11 +65,9 @@ $('#answer_cb_0').click()   // Select answer A
 $('#answer_cb_1').click()   // Select answer B
 $('#answer_cb_2').click()   // Select answer C
 $('#answer_cb_3').click()   // Select answer D
-```
-```javascript
+
 document.querySelector('.submit_block button.f-button.blue').click()   // Save & Continue
-```
-```javascript
+
 $('#submitMyMilestone').click()   // Submit Milestone
 ```
 
