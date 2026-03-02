@@ -5,6 +5,7 @@
 // @version     30.0
 // @author      Scrut1ny
 // @description Copies Q&A & blocks all tracking in real-time
+// @icon        https://app.sophia.org/favicon.ico
 // @run-at      document-start
 // @grant       GM_setClipboard
 // @grant       unsafeWindow
