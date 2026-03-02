@@ -3,7 +3,7 @@
 
 ---
 
-## SOPHIA Object - Full Reference
+## Global Helper Functions
 
 ### Current User Information
 ```javascript
