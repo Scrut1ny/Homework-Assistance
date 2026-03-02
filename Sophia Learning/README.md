@@ -53,6 +53,9 @@ $('#answer-3').click()   // Select answer D
 ```javascript
 document.querySelector('button.f-button.blue').click()   // Submit My Answer
 ```
+```javascript
+document.querySelector('button[data-km-value*="go-to-the-next-concept"]').click()   // Go to the Next Concept
+```
 
 </details>
 
@@ -68,11 +71,13 @@ $('#answer_cb_3').click()   // Select answer D
 ```javascript
 document.querySelector('.submit_block button.f-button.blue').click()   // Save & Continue
 ```
+```javascript
+$('#submitMyMilestone').click()   // Submit Milestone
+```
 
 </details>
 
 > **Note:** The submit/save buttons will only work after an answer has been selected.
-
 
 
 
