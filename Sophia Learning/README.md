@@ -15,7 +15,19 @@
 | `optimizely.push({ type: 'event', eventName: 'test' });` | Optimizely trap | ✅ Blocked |
 | `document.cookie = 'sophia_st=test123; path=/';` | Cookie defense | ✅ Blocked |
 
-
+- Intercept/Log all AJAX requests for '/continue-to-learn'
+```javascript
+$(document).ajaxSend(function(event, jqxhr, settings) {
+    if (settings.url === '/continue-to-learn' && settings.type === 'POST') {
+        console.log('AJAX Request:', settings);
+        jqxhr.done(function(response) {
+            console.log('AJAX Response:', response);
+        }).fail(function(xhr, status, error) {
+            console.log('AJAX Request Failed:', status, error);
+        });
+    }
+});
+```
 
 
 
