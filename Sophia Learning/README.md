@@ -13,7 +13,7 @@ SOPHIA.currentUserFirstName()    // First name
 SOPHIA.currentUserLastName()     // Last name
 SOPHIA.currentUserProgramId()    // Program ID
 ```
-```
+```javascript
 SOPHIA.loggedIn()                // Check if logged in
 ```
 
