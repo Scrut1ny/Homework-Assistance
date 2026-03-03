@@ -3,7 +3,7 @@
 | Website | Accepted Status | Cost | Proctored Status |
 |-|-|-|-|
 | [Sophia](https://www.sophia.org/) | [Check](https://www.sophia.org/find-your-school/) | $99/m | ❌ |
-| [Study](https://study.com/) | [Check](https://study.com/college/school/index.html#transferSearch) | $95/m (gen eds) | ✅ |
+| [Study](https://study.com/) | [Check](https://study.com/college/school/index.html#transferSearch) | $95/m (gen eds) | ❌ |
 | [StraighterLine](https://straighterline.com/) | [Check](https://www.straighterline.com/colleges/) | $99/m | ❌ |
 | [CLEP](https://clep.collegeboard.org/) | [Check](https://clep.collegeboard.org/clep-college-credit-policy-search) | $99/Per Exam (Free if in military) | ✅ |
 
