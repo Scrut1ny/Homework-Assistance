@@ -70,11 +70,11 @@
         const style = document.createElement("style");
         style.id = "hp-styles";
         style.textContent =
-        "#hp-log-container{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:6px;z-index:2147483647;pointer-events:none;align-items:flex-end}" +
-        ".hp-log{background:#1a1a1a;color:#ff5555;border:1px solid #333;padding:6px 10px;border-radius:4px;font-size:13px;font-family:Consolas,monospace;font-weight:bold;animation:hp-fade 6s ease forwards;opacity:1;box-shadow:0 4px 12px rgba(0,0,0,.5);pointer-events:auto;min-width:150px;display:flex;align-items:center;gap:8px}" +
-        ".hp-toast{position:fixed;bottom:16px;left:16px;padding:8px 12px;background:#1a1a1a;color:#4dff88;border:1px solid #333;border-left:3px solid #4dff88;border-radius:4px;font-size:20px;font-family:Consolas,monospace;z-index:2147483647;font-weight:bold;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.5);animation:hp-slide-in-left .3s ease forwards}" +
-        "@keyframes hp-fade{0%{opacity:0;transform:translateY(10px)}5%{opacity:1;transform:translateY(0)}85%{opacity:1;transform:translateY(-5px)}100%{opacity:0;transform:translateY(-20px)}}" +
-        "@keyframes hp-slide-in-left{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}";
+            "#hp-log-container{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:6px;z-index:2147483647;pointer-events:none;align-items:flex-end}" +
+            ".hp-log{background:#1a1a1a;color:#ff5555;border:1px solid #333;padding:6px 10px;border-radius:4px;font-size:13px;font-family:Consolas,monospace;font-weight:bold;animation:hp-fade 6s ease forwards;opacity:1;box-shadow:0 4px 12px rgba(0,0,0,.5);pointer-events:auto;min-width:150px;display:flex;align-items:center;gap:8px}" +
+            ".hp-toast{position:fixed;bottom:16px;left:16px;padding:8px 12px;background:#1a1a1a;color:#4dff88;border:1px solid #333;border-left:3px solid #4dff88;border-radius:4px;font-size:20px;font-family:Consolas,monospace;z-index:2147483647;font-weight:bold;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.5);animation:hp-slide-in-left .3s ease forwards}" +
+            "@keyframes hp-fade{0%{opacity:0;transform:translateY(10px)}5%{opacity:1;transform:translateY(0)}85%{opacity:1;transform:translateY(-5px)}100%{opacity:0;transform:translateY(-20px)}}" +
+            "@keyframes hp-slide-in-left{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}";
         (document.head || ROOT).appendChild(style);
     };
 
@@ -244,7 +244,7 @@
             Object.defineProperty(w, "jQuery", {
                 configurable: true,
                 get: () => _jq,
-                                  set: (val) => { _jq = val; hookJQuery(val); }
+                set: (val) => { _jq = val; hookJQuery(val); }
             });
         } catch (e) {}
 
@@ -253,7 +253,7 @@
             Object.defineProperty(w, "$", {
                 configurable: true,
                 get: () => _$,
-                                  set: (val) => { _$ = val; hookJQuery(val); }
+                set: (val) => { _$ = val; hookJQuery(val); }
             });
         } catch (e) {}
     };
@@ -286,7 +286,7 @@
                 }
                 if (args.length) return origPush.apply(this, args);
             };
-                return target;
+            return target;
         };
 
         const wrapCall = (target) => {
@@ -314,7 +314,7 @@
             Object.defineProperty(w, key, {
                 configurable: true,
                 get: () => current,
-                                  set: (val) => { current = wrap(val); }
+                set: (val) => { current = wrap(val); }
             });
         } catch (e) {
             console.warn(`Failed to hook ${key}`, e);
@@ -417,9 +417,9 @@
     };
 
     const extractAndCopy = () => {
-        const qContainer = document.querySelector(".challenge-v2-question__text")
-        || document.querySelector(".question-body .question")
-        || document.querySelector(".question-body");
+        const qContainer = document.querySelector(".challenge-v2-question__text") ||
+                           document.querySelector(".question-body .question") ||
+                           document.querySelector(".question-body");
 
         const aList = document.querySelector(A_SELECTOR);
         if (!qContainer || !aList) return;
@@ -427,9 +427,9 @@
         const currentRaw = qContainer.innerText + "\0" + aList.innerText;
         if (currentRaw === lastRawText) return;
 
-        const finalQ = qContainer.querySelector("img, table, ol") || qContainer.querySelector(Q_STRIP)
-        ? getCleanText(qContainer)
-        : qContainer.innerText.trim();
+        const finalQ = qContainer.querySelector("img, table, ol") || qContainer.querySelector(Q_STRIP) ?
+            getCleanText(qContainer) :
+            qContainer.innerText.trim();
 
         const items = aList.querySelectorAll(":scope > li");
         const BAR = "\u2500".repeat(35);
@@ -440,17 +440,17 @@
             const li = items[i];
             if (li.classList.contains("rationale-item")) continue;
 
-            const textEl = li.querySelector(".challenge-v2-answer__text div")
-            || li.querySelector("label div")
-            || li.querySelector(".challenge-v2-answer__text")
-            || li;
+            const textEl = li.querySelector(".challenge-v2-answer__text div") ||
+                           li.querySelector("label div") ||
+                           li.querySelector(".challenge-v2-answer__text") ||
+                           li;
 
             const letter = LETTERS[idx];
             const pad = "  ";
 
-            let answerText = textEl.querySelector("img, table, ol, br")
-            ? getCleanText(textEl, pad)
-            : textEl.innerText.trim();
+            let answerText = textEl.querySelector("img, table, ol, br") ?
+                getCleanText(textEl, pad) :
+                textEl.innerText.trim();
 
             if (!answerText) continue;
 
@@ -498,20 +498,25 @@
         if (needsExtract) scheduleExtract();
     });
 
-        const init = () => {
-            if (initialized) return;
-            initialized = true;
-            injectStyles();
-            patchTracking();
-            patchNetwork();
-            patchActivityTracking();
-            patchLocalStorage();
-            activateCookieDefense();
-            extractAndCopy();
-            setInterval(extractAndCopy, 3000);
-            observer.observe(ROOT, { childList: true, subtree: true });
-        };
+    const init = () => {
+        if (initialized) return;
+        initialized = true;
+        injectStyles();
+        patchTracking();
+        patchNetwork();
+        patchActivityTracking();
+        patchLocalStorage();
+        activateCookieDefense();
+        extractAndCopy();
+        setInterval(extractAndCopy, 3000);
+        observer.observe(ROOT, {
+            childList: true,
+            subtree: true
+        });
+    };
 
-        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-        else init();
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, {
+        once: true
+    });
+    else init();
 })();
