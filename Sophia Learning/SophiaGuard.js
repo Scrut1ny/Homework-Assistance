@@ -428,8 +428,11 @@
         if (currentRaw === lastRawText) return;
 
         const finalQ = qContainer.querySelector("img, table, ol") || qContainer.querySelector(Q_STRIP) ?
-            getCleanText(qContainer) :
-            qContainer.innerText.trim();
+                       getCleanText(qContainer) :
+                       qContainer.innerText.trim();
+
+        const zoomImg = qContainer.parentElement && qContainer.parentElement.querySelector(".quiz-zoom-image img[alt]");
+        const fullQ = zoomImg ? finalQ + "\n\n[Image: " + zoomImg.alt.trim() + "]" : finalQ;
 
         const items = aList.querySelectorAll(":scope > li");
         const BAR = "\u2500".repeat(35);
@@ -449,8 +452,8 @@
             const pad = "  ";
 
             let answerText = textEl.querySelector("img, table, ol, br") ?
-                getCleanText(textEl, pad) :
-                textEl.innerText.trim();
+                             getCleanText(textEl, pad) :
+                             textEl.innerText.trim();
 
             if (!answerText) continue;
 
@@ -462,7 +465,7 @@
             idx++;
         }
 
-        const fullText = "QUESTION:\n" + finalQ + "\n\nOPTIONS:\n" + finalAnswers;
+        const fullText = "QUESTION:\n" + fullQ + "\n\nOPTIONS:\n" + finalAnswers;
         const contentHash = simpleHash(fullText);
 
         if (contentHash !== lastCopiedHash) {
