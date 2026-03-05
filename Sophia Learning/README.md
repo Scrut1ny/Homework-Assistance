@@ -39,7 +39,9 @@ $(document).ajaxSend(function(event, jqxhr, settings) {
 
 
 ### Third party resources Sophia uses:
-- [Copyleaks](https://copyleaks.com/ai-content-detector)
+- [Copyleaks](https://copyleaks.com/)
+    - [AI Detector](https://copyleaks.com/ai-content-detector)
+    - [Plagiarism Checker](https://copyleaks.com/plagiarism-checker)
 
 
 
