@@ -2,7 +2,7 @@
 // @name        Sophia Guard
 // @namespace   https://github.com/Scrut1ny
 // @match       https://*.sophia.org/*
-// @version     31.0
+// @version     32.0
 // @author      Scrut1ny
 // @description Copies Q&A & blocks all tracking in real-time
 // @icon        https://app.sophia.org/favicon.ico
@@ -62,6 +62,51 @@
     let toastTimer = null;
     let initialized = false;
 
+    // --- NATIVE MASK ---
+    const _maskedFns = new WeakSet();
+    const _maskedStrs = new WeakMap();
+
+    const _installToStringGuard = () => {
+        const origToString = Function.prototype.toString;
+        const guard = function toString() {
+            if (_maskedFns.has(this)) return _maskedStrs.get(this);
+            return origToString.call(this);
+        };
+        _maskedFns.add(guard);
+        _maskedStrs.set(guard, `function toString() { [native code] }`);
+        Object.defineProperty(guard, "name", {
+            value: "toString",
+            configurable: true
+        });
+        Object.defineProperty(guard, "length", {
+            value: 0,
+            configurable: true
+        });
+        Object.defineProperty(Function.prototype, "toString", {
+            value: guard,
+            writable: true,
+            configurable: true
+        });
+    };
+
+    _installToStringGuard();
+
+    const maskNative = (patched, original) => {
+        const name = original.name || "";
+        const nativeStr = `function ${name}() { [native code] }`;
+        _maskedFns.add(patched);
+        _maskedStrs.set(patched, nativeStr);
+        Object.defineProperty(patched, "name", {
+            value: name,
+            configurable: true
+        });
+        Object.defineProperty(patched, "length", {
+            value: original.length,
+            configurable: true
+        });
+        return patched;
+    };
+
     // --- UI ---
     const ROOT = document.documentElement;
 
@@ -70,11 +115,11 @@
         const style = document.createElement("style");
         style.id = "hp-styles";
         style.textContent =
-            "#hp-log-container{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:6px;z-index:2147483647;pointer-events:none;align-items:flex-end}" +
-            ".hp-log{background:#1a1a1a;color:#ff5555;border:1px solid #333;padding:6px 10px;border-radius:4px;font-size:13px;font-family:Consolas,monospace;font-weight:bold;animation:hp-fade 6s ease forwards;opacity:1;box-shadow:0 4px 12px rgba(0,0,0,.5);pointer-events:auto;min-width:150px;display:flex;align-items:center;gap:8px}" +
-            ".hp-toast{position:fixed;bottom:16px;left:16px;padding:8px 12px;background:#1a1a1a;color:#4dff88;border:1px solid #333;border-left:3px solid #4dff88;border-radius:4px;font-size:20px;font-family:Consolas,monospace;z-index:2147483647;font-weight:bold;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.5);animation:hp-slide-in-left .3s ease forwards}" +
-            "@keyframes hp-fade{0%{opacity:0;transform:translateY(10px)}5%{opacity:1;transform:translateY(0)}85%{opacity:1;transform:translateY(-5px)}100%{opacity:0;transform:translateY(-20px)}}" +
-            "@keyframes hp-slide-in-left{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}";
+        "#hp-log-container{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:6px;z-index:2147483647;pointer-events:none;align-items:flex-end}" +
+        ".hp-log{background:#1a1a1a;color:#ff5555;border:1px solid #333;padding:6px 10px;border-radius:4px;font-size:13px;font-family:Consolas,monospace;font-weight:bold;animation:hp-fade 6s ease forwards;opacity:1;box-shadow:0 4px 12px rgba(0,0,0,.5);pointer-events:auto;min-width:150px;display:flex;align-items:center;gap:8px}" +
+        ".hp-toast{position:fixed;bottom:16px;left:16px;padding:8px 12px;background:#1a1a1a;color:#4dff88;border:1px solid #333;border-left:3px solid #4dff88;border-radius:4px;font-size:20px;font-family:Consolas,monospace;z-index:2147483647;font-weight:bold;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.5);animation:hp-slide-in-left .3s ease forwards}" +
+        "@keyframes hp-fade{0%{opacity:0;transform:translateY(10px)}5%{opacity:1;transform:translateY(0)}85%{opacity:1;transform:translateY(-5px)}100%{opacity:0;transform:translateY(-20px)}}" +
+        "@keyframes hp-slide-in-left{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}";
         (document.head || ROOT).appendChild(style);
     };
 
@@ -104,7 +149,9 @@
         el.addEventListener("animationend", () => {
             el.remove();
             logCount--;
-        }, { once: true });
+        }, {
+            once: true
+        });
     };
 
     const toast = (msg) => {
@@ -134,8 +181,10 @@
 
     const patchNetwork = () => {
         const origFetch = w.fetch;
-        const blockedResponse = new Response("", { status: 200 });
-        const patched_fetch = function (input, init) {
+        const blockedResponse = new Response("", {
+            status: 200
+        });
+        const patched_fetch = function(input, init) {
             const url = typeof input === "string" ? input : input.url;
             if (isBlocked(url)) {
                 pushLog(url);
@@ -143,6 +192,7 @@
             }
             return origFetch.call(this, input, init);
         };
+        maskNative(patched_fetch, origFetch);
         Object.defineProperty(w, "fetch", {
             value: patched_fetch,
             writable: false,
@@ -154,7 +204,7 @@
         const origSend = XHR.send;
         const blockedXHRs = new WeakSet();
 
-        const patched_open = function (method, url, async, user, pass) {
+        const patched_open = function(method, url, async, user, pass) {
             if (isBlocked(url)) {
                 blockedXHRs.add(this);
                 pushLog(url);
@@ -162,11 +212,13 @@
             }
             return origOpen.call(this, method, url, async, user, pass);
         };
+        maskNative(patched_open, origOpen);
 
-        const patched_send = function (body) {
+        const patched_send = function(body) {
             if (blockedXHRs.has(this)) return;
             return origSend.call(this, body);
         };
+        maskNative(patched_send, origSend);
 
         Object.defineProperty(XHR, "open", {
             value: patched_open,
@@ -181,13 +233,14 @@
 
         const origBeacon = w.navigator.sendBeacon;
         if (origBeacon) {
-            const patched_beacon = function (url, data) {
+            const patched_beacon = function(url, data) {
                 if (isBlocked(url)) {
                     pushLog(url);
                     return true;
                 }
                 return origBeacon.call(this, url, data);
             };
+            maskNative(patched_beacon, origBeacon);
             Object.defineProperty(w.navigator, "sendBeacon", {
                 value: patched_beacon,
                 writable: false,
@@ -198,38 +251,41 @@
 
     // --- ACTIVITY / FOCUS / BLUR TRACKING SUPPRESSION ---
     const patchActivityTracking = () => {
-        // Layer 1: Suppress DOM events so Sophia's JS never fires the AJAX calls
         w.document.addEventListener("visibilitychange", (e) => {
             e.stopImmediatePropagation();
         }, true);
-        
+
         w.addEventListener("blur", (e) => {
             e.stopImmediatePropagation();
         }, true);
-        
+
         w.addEventListener("focus", (e) => {
             e.stopImmediatePropagation();
         }, true);
-        
+
         w.document.addEventListener("beforeunload", (e) => {
             e.stopImmediatePropagation();
         }, true);
 
-        // Layer 2: Intercept jQuery.ajax as a safety net for continue-to-learn calls
         const hookJQuery = (jq) => {
             if (!jq || !jq.ajax || jq.__sgPatched) return;
             jq.__sgPatched = true;
             const origAjax = jq.ajax;
-            jq.ajax = function (settings) {
+            jq.ajax = function(settings) {
                 if (typeof settings === "object" && settings.url && settings.url.indexOf("continue-to-learn") > -1) {
                     let data = settings.data;
-                    if (typeof data === "string") { try { data = JSON.parse(data); } catch (e) {} }
+                    if (typeof data === "string") {
+                        try {
+                            data = JSON.parse(data);
+                        } catch (e) {}
+                    }
                     const evt = data && data.event ? data.event : "unknown";
                     pushLog(`AJAX blocked: ${evt}`);
                     return jq.Deferred().resolve().promise();
                 }
                 return origAjax.apply(this, arguments);
             };
+            maskNative(jq.ajax, origAjax);
         };
 
         hookJQuery(w.jQuery);
@@ -240,7 +296,10 @@
             Object.defineProperty(w, "jQuery", {
                 configurable: true,
                 get: () => _jq,
-                set: (val) => { _jq = val; hookJQuery(val); }
+                                  set: (val) => {
+                                      _jq = val;
+                                      hookJQuery(val);
+                                  }
             });
         } catch (e) {}
 
@@ -249,7 +308,10 @@
             Object.defineProperty(w, "$", {
                 configurable: true,
                 get: () => _$,
-                set: (val) => { _$ = val; hookJQuery(val); }
+                                  set: (val) => {
+                                      _$ = val;
+                                      hookJQuery(val);
+                                  }
             });
         } catch (e) {}
     };
@@ -261,7 +323,7 @@
 
         const wrapPush = (target) => {
             const origPush = Array.prototype.push;
-            target.push = function (...args) {
+            target.push = function(...args) {
                 for (let i = args.length - 1; i >= 0; i--) {
                     const arg = args[i];
                     if (arg && typeof arg === "object") {
@@ -282,17 +344,20 @@
                 }
                 if (args.length) return origPush.apply(this, args);
             };
-            return target;
+                maskNative(target.push, Array.prototype.push);
+                return target;
         };
 
         const wrapCall = (target) => {
-            return function (...args) {
+            const wrapped = function(...args) {
                 if (rules.has(args[0])) {
                     pushLog(`${key}: ${args[0]}`);
                     return;
                 }
                 return target.apply(this, args);
             };
+            maskNative(wrapped, target);
+            return wrapped;
         };
 
         const wrap = (val) => {
@@ -300,7 +365,7 @@
             return isPush ? wrapPush(val) : wrapCall(val);
         };
 
-        const fallback = isPush ? [] : function () {
+        const fallback = isPush ? [] : function() {
             (w[key].q = w[key].q || []).push(arguments);
         };
 
@@ -310,7 +375,9 @@
             Object.defineProperty(w, key, {
                 configurable: true,
                 get: () => current,
-                set: (val) => { current = wrap(val); }
+                                  set: (val) => {
+                                      current = wrap(val);
+                                  }
             });
         } catch (e) {
             console.warn(`Failed to hook ${key}`, e);
@@ -335,12 +402,20 @@
             pushLog(`Cookie: ${name}`);
         };
 
-        for (const { name } of await store.getAll()) {
+        for (const {
+            name
+        }
+        of await store.getAll()) {
             if (BLOCKED_COOKIE_RE.test(name)) purge(name);
         }
 
-        store.addEventListener("change", ({ changed }) => {
-            for (const { name } of changed) {
+        store.addEventListener("change", ({
+            changed
+        }) => {
+            for (const {
+                name
+            }
+            of changed) {
                 if (BLOCKED_COOKIE_RE.test(name)) purge(name);
             }
         });
@@ -348,13 +423,14 @@
 
     const patchLocalStorage = () => {
         const origSetItem = w.Storage.prototype.setItem;
-        const patched = function (key, value) {
+        const patched = function(key, value) {
             if (BLOCKED_STORAGE_KEYS.has(key)) {
                 pushLog(`localStorage: ${key}`);
                 return;
             }
             origSetItem.call(this, key, value);
         };
+        maskNative(patched, origSetItem);
         Object.defineProperty(w.Storage.prototype, "setItem", {
             value: patched,
             writable: false,
@@ -390,7 +466,9 @@
                 txt += `${indent}| ${cells.join(" | ")} |\n`;
                 if (i === 0) txt += `${indent}| ${cells.map(() => "---").join(" | ")} |\n`;
             });
-            table.replaceWith(Object.assign(document.createElement("div"), { innerText: txt + "\n" }));
+            table.replaceWith(Object.assign(document.createElement("div"), {
+                innerText: txt + "\n"
+            }));
         }
 
         for (const ol of clone.querySelectorAll("ol")) {
@@ -399,7 +477,9 @@
             items.forEach((li, i) => {
                 txt += `${indent}${i + 1}. ${li.innerText.trim()}\n`;
             });
-            ol.replaceWith(Object.assign(document.createElement("div"), { innerText: txt }));
+            ol.replaceWith(Object.assign(document.createElement("div"), {
+                innerText: txt
+            }));
         }
 
         for (const p of clone.querySelectorAll("p")) p.append("\n");
@@ -414,8 +494,8 @@
 
     const extractAndCopy = () => {
         const qContainer = document.querySelector(".challenge-v2-question__text") ||
-                           document.querySelector(".question-body .question") ||
-                           document.querySelector(".question-body");
+        document.querySelector(".question-body .question") ||
+        document.querySelector(".question-body");
 
         const aList = document.querySelector(A_SELECTOR);
         if (!qContainer || !aList) return;
@@ -424,8 +504,8 @@
         if (currentRaw === lastRawText) return;
 
         const finalQ = qContainer.querySelector("img, table, ol") || qContainer.querySelector(Q_STRIP) ?
-                       getCleanText(qContainer) :
-                       qContainer.innerText.trim();
+        getCleanText(qContainer) :
+        qContainer.innerText.trim();
 
         const zoomImg = qContainer.parentElement && qContainer.parentElement.querySelector(".quiz-zoom-image img[alt]");
         const fullQ = zoomImg ? finalQ + "\n\n[Image: " + zoomImg.alt.trim() + "]" : finalQ;
@@ -440,16 +520,16 @@
             if (li.classList.contains("rationale-item")) continue;
 
             const textEl = li.querySelector(".challenge-v2-answer__text div") ||
-                           li.querySelector("label div") ||
-                           li.querySelector(".challenge-v2-answer__text") ||
-                           li;
+            li.querySelector("label div") ||
+            li.querySelector(".challenge-v2-answer__text") ||
+            li;
 
             const letter = LETTERS[idx];
             const pad = "  ";
 
             let answerText = textEl.querySelector("img, table, ol, br") ?
-                             getCleanText(textEl, pad) :
-                             textEl.innerText.trim();
+            getCleanText(textEl, pad) :
+            textEl.innerText.trim();
 
             if (!answerText) continue;
 
@@ -497,25 +577,25 @@
         if (needsExtract) scheduleExtract();
     });
 
-    const init = () => {
-        if (initialized) return;
-        initialized = true;
-        injectStyles();
-        patchTracking();
-        patchNetwork();
-        patchActivityTracking();
-        patchLocalStorage();
-        activateCookieDefense();
-        extractAndCopy();
-        setInterval(extractAndCopy, 3000);
-        observer.observe(ROOT, {
-            childList: true,
-            subtree: true
-        });
-    };
+        const init = () => {
+            if (initialized) return;
+            initialized = true;
+            injectStyles();
+            patchTracking();
+            patchNetwork();
+            patchActivityTracking();
+            patchLocalStorage();
+            activateCookieDefense();
+            extractAndCopy();
+            setInterval(extractAndCopy, 3000);
+            observer.observe(ROOT, {
+                childList: true,
+                subtree: true
+            });
+        };
 
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, {
-        once: true
-    });
-    else init();
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, {
+            once: true
+        });
+        else init();
 })();
