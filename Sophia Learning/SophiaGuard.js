@@ -200,22 +200,18 @@
     const patchActivityTracking = () => {
         // Layer 1: Suppress DOM events so Sophia's JS never fires the AJAX calls
         w.document.addEventListener("visibilitychange", (e) => {
-            pushLog(`visibilitychange: ${w.document.visibilityState}`);
             e.stopImmediatePropagation();
         }, true);
-
+        
         w.addEventListener("blur", (e) => {
-            if (e.target === w) pushLog("window blur");
             e.stopImmediatePropagation();
         }, true);
-
+        
         w.addEventListener("focus", (e) => {
-            if (e.target === w) pushLog("window focus");
             e.stopImmediatePropagation();
         }, true);
-
+        
         w.document.addEventListener("beforeunload", (e) => {
-            pushLog("beforeunload");
             e.stopImmediatePropagation();
         }, true);
 
